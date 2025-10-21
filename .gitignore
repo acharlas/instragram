@@ -1,0 +1,20 @@
+# Environment files
+.env
+.env.*
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+
+# Node artifacts
+node_modules/
+.next/
+*.tsbuildinfo
+
+# Logs and caches
+*.log
+*.pid
+.DS_Store
