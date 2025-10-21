@@ -1,0 +1,54 @@
+name: Backend CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint, Type Check, and Test Backend
+    runs-on: ubuntu-latest
+    env:
+      UV_CACHE_DIR: .uvcache
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: |
+          pip install uv
+
+      - name: Sync dependencies
+        working-directory: backend
+        run: |
+          uv sync --frozen --extra dev
+
+      - name: Run Ruff
+        working-directory: backend
+        run: |
+          uv run ruff check .
+
+      - name: Run mypy
+        working-directory: backend
+        run: |
+          uv run mypy .
+
+      - name: Run pytest
+        working-directory: backend
+        env:
+          PYTHONPATH: .
+        run: |
+          uv run pytest
