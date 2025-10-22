@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import ColumnElement
 
 from api.deps import get_db
 from core import (
@@ -28,8 +29,12 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 ACCESS_COOKIE = "access_token"
 REFRESH_COOKIE = "refresh_token"
 COOKIE_PATH = "/"
-COOKIE_SAMESITE = "lax"
+COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "lax"
 COOKIE_SECURE = settings.app_env != "local"
+
+
+def _eq(column: Any, value: Any) -> ColumnElement[bool]:
+    return cast(ColumnElement[bool], column == value)
 
 
 class RegisterRequest(BaseModel):
@@ -101,7 +106,7 @@ async def _get_refresh_token(
 ) -> RefreshToken:
     hashed = _hash_refresh_token(token)
     result = await session.execute(
-        select(RefreshToken).where(RefreshToken.token_hash == hashed)
+        select(RefreshToken).where(_eq(RefreshToken.token_hash, hashed))
     )
     token_obj = result.scalar_one_or_none()
     if token_obj is None:
@@ -168,7 +173,10 @@ async def register(
 ) -> UserResponse:
     existing = await session.execute(
         select(User).where(
-            (User.username == payload.username) | (User.email == payload.email)
+            or_(
+                _eq(User.username, payload.username),
+                _eq(User.email, payload.email),
+            )
         )
     )
     if existing.scalar_one_or_none():
@@ -196,7 +204,7 @@ async def login(
     response: Response,
     session: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
-    result = await session.execute(select(User).where(User.username == payload.username))
+    result = await session.execute(select(User).where(_eq(User.username, payload.username)))
     user = result.scalar_one_or_none()
     if user is None or not verify_password(payload.password, user.password_hash):
         raise HTTPException(
@@ -207,10 +215,18 @@ async def login(
     if needs_rehash(user.password_hash):
         user.password_hash = hash_password(payload.password)
 
-    access_token = create_access_token(str(user.id))
-    refresh_token = create_refresh_token(str(user.id))
+    if user.id is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="User record is missing an identifier",
+        )
 
-    await _store_refresh_token(session, user.id, refresh_token)
+    user_id = user.id
+
+    access_token = create_access_token(str(user_id))
+    refresh_token = create_refresh_token(str(user_id))
+
+    await _store_refresh_token(session, user_id, refresh_token)
     await session.commit()
 
     _set_token_cookies(response, access_token, refresh_token)
@@ -245,7 +261,13 @@ async def refresh_tokens(
         )
 
     token_obj = await _get_refresh_token(session, refresh_token)
-    user_id = int(payload["sub"])
+    try:
+        user_id = int(payload["sub"])
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        ) from None
 
     now = datetime.now(timezone.utc)
     token_obj.revoked_at = now
@@ -269,7 +291,7 @@ async def logout(
     if refresh_token:
         hashed = _hash_refresh_token(refresh_token)
         result = await session.execute(
-            select(RefreshToken).where(RefreshToken.token_hash == hashed)
+            select(RefreshToken).where(_eq(RefreshToken.token_hash, hashed))
         )
         token_obj = result.scalar_one_or_none()
         if token_obj and token_obj.revoked_at is None:

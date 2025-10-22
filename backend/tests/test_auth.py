@@ -1,13 +1,19 @@
 """End-to-end tests for authentication endpoints."""
 
 import hashlib
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import ColumnElement
 
 from models import RefreshToken, User
+
+
+def _eq(column: Any, value: Any) -> ColumnElement[bool]:
+    return cast(ColumnElement[bool], column == value)
 
 def build_payload() -> dict[str, str | None]:
     suffix = uuid4().hex[:8]
@@ -30,7 +36,7 @@ async def test_register_creates_user(async_client, db_session: AsyncSession):
     assert data["email"] == payload["email"]
 
     result = await db_session.execute(
-        select(User).where(User.username == payload["username"])
+        select(User).where(_eq(User.username, payload["username"]))
     )
     user = result.scalar_one()
     assert user.password_hash != payload["password"]
@@ -89,7 +95,7 @@ async def test_refresh_rotates_tokens(async_client, db_session: AsyncSession):
 
     hashed_old = hashlib.sha256(old_refresh.encode()).hexdigest()
     result = await db_session.execute(
-        select(RefreshToken).where(RefreshToken.token_hash == hashed_old)
+        select(RefreshToken).where(_eq(RefreshToken.token_hash, hashed_old))
     )
     stored = result.scalar_one()
     assert stored.revoked_at is not None
@@ -117,7 +123,7 @@ async def test_logout_revokes_refresh_token(async_client, db_session: AsyncSessi
 
     hashed = hashlib.sha256(refresh_token.encode()).hexdigest()
     result = await db_session.execute(
-        select(RefreshToken).where(RefreshToken.token_hash == hashed)
+        select(RefreshToken).where(_eq(RefreshToken.token_hash, hashed))
     )
     token = result.scalar_one()
     assert token.revoked_at is not None

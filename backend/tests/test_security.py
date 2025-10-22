@@ -2,7 +2,6 @@
 
 from datetime import timedelta
 
-import pytest
 
 from core.security import (
     create_access_token,

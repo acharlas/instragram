@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 from uuid import uuid4
+from typing import Any, cast
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import ColumnElement
 
 from models import User
 from api.v1 import users as users_api
 from services import storage
+
+
+def _eq(column: Any, value: Any) -> ColumnElement[bool]:
+    return cast(ColumnElement[bool], column == value)
 
 
 def build_payload() -> dict[str, str | None]:
@@ -82,7 +88,7 @@ async def test_update_profile_with_avatar(
     assert stored_objects, "avatar should be uploaded to storage"
 
     db_result = await db_session.execute(
-        select(User).where(User.username == payload["username"])
+        select(User).where(_eq(User.username, payload["username"]))
     )
     user = db_result.scalar_one()
     assert user.name == "Updated Name"
@@ -105,3 +111,15 @@ async def test_get_me_returns_private_profile(async_client: AsyncClient):
     body = response.json()
     assert body["username"] == payload["username"]
     assert body["email"] == payload["email"]
+
+
+@pytest.mark.asyncio
+async def test_me_requires_auth(async_client: AsyncClient):
+    response = await async_client.get("/api/v1/me")
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_update_me_requires_auth(async_client: AsyncClient):
+    response = await async_client.patch("/api/v1/me", data={"name": "Nobody"})
+    assert response.status_code == 401

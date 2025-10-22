@@ -10,8 +10,10 @@ import asyncio
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any, cast
 
 from sqlalchemy import select
+from sqlalchemy.sql import ColumnElement
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
@@ -20,6 +22,10 @@ if str(ROOT_DIR) not in sys.path:
 from core.security import hash_password  # noqa: E402
 from db.session import AsyncSessionMaker  # noqa: E402
 from models import Follow, Post, User  # noqa: E402
+
+
+def _eq(column: Any, value: Any) -> ColumnElement[bool]:
+    return cast(ColumnElement[bool], column == value)
 
 
 SEED_USERS = [
@@ -66,7 +72,7 @@ DEFAULT_PASSWORD = "password123"
 
 
 async def get_or_create_user(session, payload: dict) -> User:
-    result = await session.execute(select(User).where(User.username == payload["username"]))
+    result = await session.execute(select(User).where(_eq(User.username, payload["username"])))
     user = result.scalar_one_or_none()
     if user:
         return user
@@ -86,10 +92,13 @@ async def get_or_create_user(session, payload: dict) -> User:
 async def ensure_posts(session, users: dict[str, User]) -> None:
     for post_payload in SEED_POSTS:
         author = users[post_payload["username"]]
+        if author.id is None:
+            raise ValueError("Author missing identifier during seeding")
+
         result = await session.execute(
             select(Post).where(
-                Post.author_id == author.id,
-                Post.image_key == post_payload["image_key"],
+                _eq(Post.author_id, author.id),
+                _eq(Post.image_key, post_payload["image_key"]),
             )
         )
         if result.scalar_one_or_none():
@@ -109,10 +118,13 @@ async def ensure_follows(session, users: dict[str, User]) -> None:
         follower = users[follower_username]
         followee = users[followee_username]
 
+        if follower.id is None or followee.id is None:
+            raise ValueError("Seed users missing identifiers")
+
         result = await session.execute(
             select(Follow).where(
-                Follow.follower_id == follower.id,
-                Follow.followee_id == followee.id,
+                _eq(Follow.follower_id, follower.id),
+                _eq(Follow.followee_id, followee.id),
             )
         )
         if result.scalar_one_or_none():

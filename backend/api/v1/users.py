@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from io import BytesIO
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, ConfigDict, EmailStr
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import ColumnElement
 
 from api.deps import get_current_user, get_db
 from core import settings
@@ -17,6 +18,10 @@ from models import Follow, User
 from services import ensure_bucket, get_minio_client
 
 router = APIRouter(tags=["users"])
+
+
+def _eq(column: Any, value: Any) -> ColumnElement[bool]:
+    return cast(ColumnElement[bool], column == value)
 
 
 class UserProfilePublic(BaseModel):
@@ -39,7 +44,7 @@ async def get_user_profile(
     session: AsyncSession = Depends(get_db),
 ) -> UserProfilePublic:
     """Fetch a user's public profile."""
-    result = await session.execute(select(User).where(User.username == username))
+    result = await session.execute(select(User).where(_eq(User.username, username)))
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -114,15 +119,21 @@ async def follow_user(
     if username == current_user.username:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot follow yourself")
 
-    result = await session.execute(select(User).where(User.username == username))
+    result = await session.execute(select(User).where(_eq(User.username, username)))
     followee = result.scalar_one_or_none()
     if followee is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    if current_user.id is None or followee.id is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="User record missing identifier",
+        )
+
     existing = await session.execute(
         select(Follow).where(
-            Follow.follower_id == current_user.id,
-            Follow.followee_id == followee.id,
+            _eq(Follow.follower_id, current_user.id),
+            _eq(Follow.followee_id, followee.id),
         )
     )
     if existing.scalar_one_or_none() is not None:
@@ -140,15 +151,21 @@ async def unfollow_user(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    result = await session.execute(select(User).where(User.username == username))
+    result = await session.execute(select(User).where(_eq(User.username, username)))
     followee = result.scalar_one_or_none()
     if followee is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    if current_user.id is None or followee.id is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="User record missing identifier",
+        )
+
     await session.execute(
         delete(Follow).where(
-            Follow.follower_id == current_user.id,
-            Follow.followee_id == followee.id,
+            _eq(Follow.follower_id, current_user.id),
+            _eq(Follow.followee_id, followee.id),
         )
     )
     await session.commit()
@@ -160,15 +177,21 @@ async def list_followers(
     username: str,
     session: AsyncSession = Depends(get_db),
 ) -> list[UserProfilePublic]:
-    result = await session.execute(select(User).where(User.username == username))
+    result = await session.execute(select(User).where(_eq(User.username, username)))
     target_user = result.scalar_one_or_none()
     if target_user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    if target_user.id is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="User record missing identifier",
+        )
+
     followers_query = (
         select(User)
-        .join(Follow, Follow.follower_id == User.id)
-        .where(Follow.followee_id == target_user.id)
+        .join(Follow, _eq(Follow.follower_id, User.id))
+        .where(_eq(Follow.followee_id, target_user.id))
         .order_by(User.username)
     )
     followers_result = await session.execute(followers_query)
@@ -181,15 +204,21 @@ async def list_following(
     username: str,
     session: AsyncSession = Depends(get_db),
 ) -> list[UserProfilePublic]:
-    result = await session.execute(select(User).where(User.username == username))
+    result = await session.execute(select(User).where(_eq(User.username, username)))
     target_user = result.scalar_one_or_none()
     if target_user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    if target_user.id is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="User record missing identifier",
+        )
+
     following_query = (
         select(User)
-        .join(Follow, Follow.followee_id == User.id)
-        .where(Follow.follower_id == target_user.id)
+        .join(Follow, _eq(Follow.followee_id, User.id))
+        .where(_eq(Follow.follower_id, target_user.id))
         .order_by(User.username)
     )
     following_result = await session.execute(following_query)

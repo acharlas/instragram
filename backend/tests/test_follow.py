@@ -7,7 +7,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import Follow, User
+from models import Follow
 
 
 def make_user_payload(prefix: str) -> dict[str, str | None]:
