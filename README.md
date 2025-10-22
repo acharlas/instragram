@@ -7,7 +7,7 @@ Instragram is a one-week build that recreates the core Instagram experience (fee
 ## Tech Stack
 
 - **Frontend**: Next.js 14 App Router (TypeScript), TailwindCSS, Zod, NextAuth, Playwright
-- **Backend**: FastAPI, SQLAlchemy 2.0, Alembic, Pydantic v2, asyncpg, Redis, MinIO, pytest, httpx, factory_boy, Ruff, mypy
+- **Backend**: FastAPI, SQLModel, SQLAlchemy 2.0, Alembic, Pydantic v2, asyncpg, Redis, MinIO, pytest, httpx, factory_boy, Ruff, mypy
 - **Database**: PostgreSQL 16
 - **Infrastructure**: Docker Compose, Redis, MinIO, Traefik (optional reverse proxy), MIT License
 
@@ -106,6 +106,7 @@ uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 - Run tests: `uv run pytest`
 - Static analysis: `uv run ruff check .`, `uv run mypy .`
 - Format: `uv run ruff format .`
+- Seed sample data: `uv run python scripts/seed.py`
 
 Database migrations use Alembic; the command scaffolding will be introduced alongside the migration setup (`uv run alembic upgrade head`).
 
