@@ -3,14 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
-
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, Text, func
-from sqlmodel import Field, Relationship, SQLModel
-
-if TYPE_CHECKING:
-    from .post import Post
-    from .user import User
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, Text, func
+from sqlmodel import Field, SQLModel
 
 
 class Comment(SQLModel, table=True):
@@ -19,13 +13,10 @@ class Comment(SQLModel, table=True):
     __tablename__ = "comments"
     __table_args__ = (Index("ix_comments_post_created_at", "post_id", "created_at"),)
 
-    id: int | None = Field(
-        default=None,
-        sa_column=Column(BigInteger, primary_key=True, autoincrement=True),
-    )
+    id: int | None = Field(default=None, primary_key=True)
     post_id: int = Field(
         sa_column=Column(
-            BigInteger,
+            Integer,
             ForeignKey("posts.id", ondelete="CASCADE"),
             nullable=False,
             index=True,
@@ -33,7 +24,7 @@ class Comment(SQLModel, table=True):
     )
     author_id: int = Field(
         sa_column=Column(
-            BigInteger,
+            Integer,
             ForeignKey("users.id", ondelete="CASCADE"),
             nullable=False,
             index=True,
@@ -53,6 +44,3 @@ class Comment(SQLModel, table=True):
             nullable=False,
         )
     )
-
-    post: "Post" = Relationship(back_populates="comments")
-    author: "User" = Relationship(back_populates="comments")

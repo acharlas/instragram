@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, func
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, func
 from sqlmodel import Field, SQLModel
 
 
@@ -14,14 +14,14 @@ class Follow(SQLModel, table=True):
 
     follower_id: int = Field(
         sa_column=Column(
-            BigInteger,
+            Integer,
             ForeignKey("users.id", ondelete="CASCADE"),
             primary_key=True,
         )
     )
     followee_id: int = Field(
         sa_column=Column(
-            BigInteger,
+            Integer,
             ForeignKey("users.id", ondelete="CASCADE"),
             primary_key=True,
         )

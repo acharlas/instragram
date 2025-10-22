@@ -3,16 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
-
-from sqlalchemy import BigInteger, Column, DateTime, String, Text, func
-from sqlmodel import Field, Relationship, SQLModel
-
-if TYPE_CHECKING:
-    from .comment import Comment
-    from .like import Like
-    from .post import Post
-    from .refresh_token import RefreshToken
+from sqlalchemy import Column, DateTime, String, Text, func
+from sqlmodel import Field, SQLModel
 
 
 class User(SQLModel, table=True):
@@ -20,10 +12,7 @@ class User(SQLModel, table=True):
 
     __tablename__ = "users"
 
-    id: int | None = Field(
-        default=None,
-        sa_column=Column(BigInteger, primary_key=True, autoincrement=True),
-    )
+    id: int | None = Field(default=None, primary_key=True)
     username: str = Field(
         sa_column=Column(String(30), unique=True, nullable=False, index=True)
     )
@@ -54,18 +43,4 @@ class User(SQLModel, table=True):
             onupdate=func.now(),
             nullable=False,
         )
-    )
-
-    posts: list["Post"] = Relationship(
-        back_populates="author", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
-    )
-    comments: list["Comment"] = Relationship(
-        back_populates="author", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
-    )
-    likes: list["Like"] = Relationship(
-        back_populates="user", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
-    )
-    refresh_tokens: list["RefreshToken"] = Relationship(
-        back_populates="user",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )

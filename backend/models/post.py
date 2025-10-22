@@ -3,15 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
-
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, String, Text, func
-from sqlmodel import Field, Relationship, SQLModel
-
-if TYPE_CHECKING:
-    from .comment import Comment
-    from .like import Like
-    from .user import User
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlmodel import Field, SQLModel
 
 
 class Post(SQLModel, table=True):
@@ -20,13 +13,10 @@ class Post(SQLModel, table=True):
     __tablename__ = "posts"
     __table_args__ = (Index("ix_posts_author_created_at", "author_id", "created_at"),)
 
-    id: int | None = Field(
-        default=None,
-        sa_column=Column(BigInteger, primary_key=True, autoincrement=True),
-    )
+    id: int | None = Field(default=None, primary_key=True)
     author_id: int = Field(
         sa_column=Column(
-            BigInteger,
+            Integer,
             ForeignKey("users.id", ondelete="CASCADE"),
             nullable=False,
             index=True,
@@ -50,12 +40,4 @@ class Post(SQLModel, table=True):
             onupdate=func.now(),
             nullable=False,
         )
-    )
-
-    author: "User" = Relationship(back_populates="posts")
-    comments: list["Comment"] = Relationship(
-        back_populates="post", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
-    )
-    likes: list["Like"] = Relationship(
-        back_populates="post", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
     )

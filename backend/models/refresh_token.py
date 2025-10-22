@@ -3,13 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
-
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, String
-from sqlmodel import Field, Relationship, SQLModel
-
-if TYPE_CHECKING:
-    from .user import User
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
+from sqlmodel import Field, SQLModel
 
 
 class RefreshToken(SQLModel, table=True):
@@ -17,13 +12,10 @@ class RefreshToken(SQLModel, table=True):
 
     __tablename__ = "refresh_tokens"
 
-    id: int | None = Field(
-        default=None,
-        sa_column=Column(BigInteger, primary_key=True, autoincrement=True),
-    )
+    id: int | None = Field(default=None, primary_key=True)
     user_id: int = Field(
         sa_column=Column(
-            BigInteger,
+            Integer,
             ForeignKey("users.id", ondelete="CASCADE"),
             nullable=False,
             index=True,
@@ -41,5 +33,3 @@ class RefreshToken(SQLModel, table=True):
     revoked_at: datetime | None = Field(
         default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
     )
-
-    user: "User" = Relationship(back_populates="refresh_tokens")

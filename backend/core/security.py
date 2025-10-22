@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
+from uuid import uuid4
 
 from argon2 import PasswordHasher, Type
 from argon2.exceptions import InvalidHash, VerifyMismatchError
@@ -51,6 +52,7 @@ def _create_token(subject: str, expires_delta: timedelta, token_type: str) -> st
         "type": token_type,
         "iat": int(now.timestamp()),
         "exp": int((now + expires_delta).timestamp()),
+        "jti": uuid4().hex,
     }
     return jwt.encode(
         to_encode,

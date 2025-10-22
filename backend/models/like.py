@@ -3,14 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
-
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, func
-from sqlmodel import Field, Relationship, SQLModel
-
-if TYPE_CHECKING:
-    from .post import Post
-    from .user import User
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, func
+from sqlmodel import Field, SQLModel
 
 
 class Like(SQLModel, table=True):
@@ -20,14 +14,14 @@ class Like(SQLModel, table=True):
 
     user_id: int = Field(
         sa_column=Column(
-            BigInteger,
+            Integer,
             ForeignKey("users.id", ondelete="CASCADE"),
             primary_key=True,
         )
     )
     post_id: int = Field(
         sa_column=Column(
-            BigInteger,
+            Integer,
             ForeignKey("posts.id", ondelete="CASCADE"),
             primary_key=True,
         )
@@ -45,6 +39,3 @@ class Like(SQLModel, table=True):
             nullable=False,
         )
     )
-
-    user: "User" = Relationship(back_populates="likes")
-    post: "Post" = Relationship(back_populates="likes")
