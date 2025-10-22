@@ -106,6 +106,7 @@ uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 - Run tests: `uv run pytest`
 - Static analysis: `uv run ruff check .`, `uv run mypy .`
 - Format: `uv run ruff format .`
+- Seed sample data: `uv run python scripts/seed.py`
 
 Database migrations use Alembic; the command scaffolding will be introduced alongside the migration setup (`uv run alembic upgrade head`).
 
