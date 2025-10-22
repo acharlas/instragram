@@ -31,6 +31,7 @@ REFRESH_COOKIE = "refresh_token"
 COOKIE_PATH = "/"
 COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "lax"
 COOKIE_SECURE = settings.app_env != "local"
+MAX_ACTIVE_REFRESH_TOKENS = 5
 
 
 def _eq(column: Any, value: Any) -> ColumnElement[bool]:
@@ -97,7 +98,26 @@ async def _store_refresh_token(
         expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
     )
     session.add(token_obj)
+    await session.flush()
+    await _enforce_refresh_token_limit(session, user_id)
     return token_obj
+
+
+async def _enforce_refresh_token_limit(session: AsyncSession, user_id: str) -> None:
+    result = await session.execute(
+        select(RefreshToken)
+        .where(
+            _eq(RefreshToken.user_id, user_id),
+            RefreshToken.revoked_at.is_(None),
+        )
+        .order_by(RefreshToken.issued_at.desc())
+    )
+    tokens = result.scalars().all()
+    surplus = tokens[MAX_ACTIVE_REFRESH_TOKENS:]
+    for token in surplus:
+        await session.delete(token)
+    if surplus:
+        await session.flush()
 
 
 async def _get_refresh_token(

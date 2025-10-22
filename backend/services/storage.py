@@ -16,13 +16,14 @@ def get_minio_client() -> Minio:
     endpoint = settings.minio_endpoint
     access_key = settings.minio_access_key
     secret_key = settings.minio_secret_key
+    secure = settings.minio_secure
 
     # Local development runs without TLS; production can override via endpoint/port.
     return Minio(
         endpoint,
         access_key=access_key,
         secret_key=secret_key,
-        secure=False,
+        secure=secure,
     )
 
 
@@ -37,5 +38,6 @@ def ensure_bucket(client: Minio | None = None) -> None:
     try:
         client.make_bucket(bucket_name)  # pragma: no cover - network call
     except S3Error as exc:  # pragma: no cover - handle race conditions
-        if exc.code != "BucketAlreadyOwnedByYou":
+        allowed_codes = {"BucketAlreadyOwnedByYou", "BucketAlreadyExists"}
+        if exc.code not in allowed_codes:
             raise

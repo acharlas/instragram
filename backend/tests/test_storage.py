@@ -18,6 +18,8 @@ def test_get_minio_client_uses_settings(monkeypatch):
     mock_client = MagicMock(name="Minio")
     created_clients = []
 
+    monkeypatch.setattr(storage.settings, "minio_secure", True)
+
     def fake_minio(endpoint, access_key, secret_key, secure):
         created_clients.append(
             {
@@ -40,7 +42,7 @@ def test_get_minio_client_uses_settings(monkeypatch):
             "endpoint": storage.settings.minio_endpoint,
             "access_key": storage.settings.minio_access_key,
             "secret_key": storage.settings.minio_secret_key,
-            "secure": False,
+            "secure": storage.settings.minio_secure,
         }
     ]
 
@@ -57,6 +59,24 @@ def test_ensure_bucket_existing(monkeypatch):
 def test_ensure_bucket_creates_when_missing(monkeypatch):
     client = MagicMock()
     client.bucket_exists.return_value = False
+
+    storage.ensure_bucket(client)
+
+    client.bucket_exists.assert_called_once_with(storage.settings.minio_bucket)
+    client.make_bucket.assert_called_once_with(storage.settings.minio_bucket)
+
+
+def test_ensure_bucket_handles_existing_race(monkeypatch):
+    class FakeS3Error(Exception):
+        def __init__(self, code):
+            super().__init__(code)
+            self.code = code
+
+    client = MagicMock()
+    client.bucket_exists.return_value = False
+    client.make_bucket.side_effect = FakeS3Error("BucketAlreadyExists")
+
+    monkeypatch.setattr(storage, "S3Error", FakeS3Error)
 
     storage.ensure_bucket(client)
 

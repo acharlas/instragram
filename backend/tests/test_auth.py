@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
+from api.v1.auth import MAX_ACTIVE_REFRESH_TOKENS
 from models import RefreshToken, User
 
 
@@ -127,3 +128,28 @@ async def test_logout_revokes_refresh_token(async_client, db_session: AsyncSessi
     )
     token = result.scalar_one()
     assert token.revoked_at is not None
+
+
+@pytest.mark.asyncio
+async def test_refresh_token_store_limits_active_tokens(async_client, db_session: AsyncSession):
+    payload = build_payload()
+    await async_client.post("/api/v1/auth/register", json=payload)
+
+    login_payload = {"username": payload["username"], "password": payload["password"]}
+    for _ in range(MAX_ACTIVE_REFRESH_TOKENS + 3):
+        response = await async_client.post("/api/v1/auth/login", json=login_payload)
+        assert response.status_code == 200
+
+    user_result = await db_session.execute(
+        select(User).where(_eq(User.username, payload["username"]))
+    )
+    user = user_result.scalar_one()
+
+    tokens_result = await db_session.execute(
+        select(RefreshToken)
+        .where(_eq(RefreshToken.user_id, user.id))
+        .order_by(RefreshToken.issued_at.desc())
+    )
+    tokens = tokens_result.scalars().all()
+
+    assert len(tokens) == MAX_ACTIVE_REFRESH_TOKENS

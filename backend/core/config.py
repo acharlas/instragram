@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     minio_access_key: str = Field(default="minio", alias="MINIO_ACCESS_KEY")
     minio_secret_key: str = Field(default="minio123", alias="MINIO_SECRET_KEY")
     minio_bucket: str = Field(default="instagram-media", alias="MINIO_BUCKET")
+    minio_secure: bool = Field(default=False, alias="MINIO_SECURE")
 
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
     access_token_expire_minutes: int = Field(
