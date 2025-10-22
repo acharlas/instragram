@@ -27,7 +27,7 @@ def _eq(column: Any, value: Any) -> ColumnElement[bool]:
 class UserProfilePublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: str
     username: str
     name: str | None = None
     bio: str | None = None

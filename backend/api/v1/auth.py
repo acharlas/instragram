@@ -48,7 +48,7 @@ class RegisterRequest(BaseModel):
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: str
     username: str
     email: EmailStr
     name: str | None = None
@@ -86,7 +86,7 @@ def _ensure_aware(dt: datetime) -> datetime:
 
 async def _store_refresh_token(
     session: AsyncSession,
-    user_id: int,
+    user_id: str,
     token: str,
 ) -> RefreshToken:
     payload = decode_token(token)
@@ -261,13 +261,16 @@ async def refresh_tokens(
         )
 
     token_obj = await _get_refresh_token(session, refresh_token)
-    try:
-        user_id = int(payload["sub"])
-    except (KeyError, TypeError, ValueError):
+    sub_raw = payload.get("sub")
+    if isinstance(sub_raw, str):
+        user_id = sub_raw
+    elif isinstance(sub_raw, int):
+        user_id = str(sub_raw)
+    else:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token",
-        ) from None
+        )
 
     now = datetime.now(timezone.utc)
     token_obj.revoked_at = now

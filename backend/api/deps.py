@@ -51,14 +51,10 @@ async def get_current_user(
         )
 
     user_id_raw = payload.get("sub")
-    if isinstance(user_id_raw, (str, int)):
-        try:
-            user_id = int(user_id_raw)
-        except (TypeError, ValueError):  # pragma: no cover - defensive
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token payload",
-            ) from None
+    if isinstance(user_id_raw, str):
+        user_id = user_id_raw
+    elif isinstance(user_id_raw, int):
+        user_id = str(user_id_raw)
     else:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

@@ -6,7 +6,7 @@ from models import User
 
 def make_user(**overrides) -> User:
     defaults = {
-        "id": 1,
+        "id": "00000000-0000-0000-0000-000000000001",
         "username": "sample",
         "email": "sample@example.com",
         "password_hash": "hashed",

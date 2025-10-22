@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, func
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, func
 from sqlmodel import Field, SQLModel
 
 
@@ -12,9 +12,9 @@ class Like(SQLModel, table=True):
 
     __tablename__ = "likes"
 
-    user_id: int = Field(
+    user_id: str = Field(
         sa_column=Column(
-            Integer,
+            String(36),
             ForeignKey("users.id", ondelete="CASCADE"),
             primary_key=True,
         )

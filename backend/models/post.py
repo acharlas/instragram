@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import Column, DateTime, ForeignKey, Index, String, Text, func
 from sqlmodel import Field, SQLModel
 
 
@@ -14,9 +14,9 @@ class Post(SQLModel, table=True):
     __table_args__ = (Index("ix_posts_author_created_at", "author_id", "created_at"),)
 
     id: int | None = Field(default=None, primary_key=True)
-    author_id: int = Field(
+    author_id: str = Field(
         sa_column=Column(
-            Integer,
+            String(36),
             ForeignKey("users.id", ondelete="CASCADE"),
             nullable=False,
             index=True,

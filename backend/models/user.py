@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+from uuid import uuid4
+
 from sqlalchemy import Column, DateTime, String, Text, func
 from sqlmodel import Field, SQLModel
 
@@ -12,7 +14,7 @@ class User(SQLModel, table=True):
 
     __tablename__ = "users"
 
-    id: int | None = Field(default=None, primary_key=True)
+    id: str = Field(default_factory=lambda: str(uuid4()), sa_column=Column(String(36), primary_key=True))
     username: str = Field(
         sa_column=Column(String(30), unique=True, nullable=False, index=True)
     )

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Column, DateTime, ForeignKey, String
 from sqlmodel import Field, SQLModel
 
 
@@ -13,9 +13,9 @@ class RefreshToken(SQLModel, table=True):
     __tablename__ = "refresh_tokens"
 
     id: int | None = Field(default=None, primary_key=True)
-    user_id: int = Field(
+    user_id: str = Field(
         sa_column=Column(
-            Integer,
+            String(36),
             ForeignKey("users.id", ondelete="CASCADE"),
             nullable=False,
             index=True,
