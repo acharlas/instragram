@@ -7,7 +7,7 @@ Instragram is a one-week build that recreates the core Instagram experience (fee
 ## Tech Stack
 
 - **Frontend**: Next.js 14 App Router (TypeScript), TailwindCSS, Zod, NextAuth, Playwright
-- **Backend**: FastAPI, SQLAlchemy 2.0, Alembic, Pydantic v2, asyncpg, Redis, MinIO, pytest, httpx, factory_boy, Ruff, mypy
+- **Backend**: FastAPI, SQLModel, SQLAlchemy 2.0, Alembic, Pydantic v2, asyncpg, Redis, MinIO, pytest, httpx, factory_boy, Ruff, mypy
 - **Database**: PostgreSQL 16
 - **Infrastructure**: Docker Compose, Redis, MinIO, Traefik (optional reverse proxy), MIT License
 
