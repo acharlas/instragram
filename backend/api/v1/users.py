@@ -15,7 +15,7 @@ from sqlalchemy.sql import ColumnElement
 from api.deps import get_current_user, get_db
 from core import settings
 from models import Follow, User
-from services import ensure_bucket, get_minio_client
+from services import JPEG_CONTENT_TYPE, ensure_bucket, get_minio_client, process_image_bytes
 
 router = APIRouter(tags=["users"])
 
@@ -77,26 +77,24 @@ async def update_me(
 
     if avatar is not None:
         data = await avatar.read()
-        if not data:
+        try:
+            processed_bytes, processed_content_type = process_image_bytes(data)
+        except ValueError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Avatar file cannot be empty",
-            )
+                detail=str(exc),
+            ) from exc
 
-        extension = ""
-        if avatar.filename and "." in avatar.filename:
-            extension = avatar.filename.rsplit(".", 1)[1].lower()
-            extension = f".{extension}"
-        object_key = f"avatars/{uuid4().hex}{extension}"
+        object_key = f"avatars/{uuid4().hex}.jpg"
 
         client = get_minio_client()
         ensure_bucket(client)
         client.put_object(
             settings.minio_bucket,
             object_key,
-            data=BytesIO(data),
-            length=len(data),
-            content_type=avatar.content_type or "application/octet-stream",
+            data=BytesIO(processed_bytes),
+            length=len(processed_bytes),
+            content_type=processed_content_type or JPEG_CONTENT_TYPE,
         )
 
         current_user.avatar_key = object_key
