@@ -8,12 +8,12 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, ConfigDict, EmailStr
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_current_user, get_db
 from core import settings
-from models import User
+from models import Follow, User
 from services import ensure_bucket, get_minio_client
 
 router = APIRouter(tags=["users"])
@@ -103,3 +103,95 @@ async def update_me(
         await session.refresh(current_user)
 
     return UserProfilePrivate.model_validate(current_user)
+
+
+@router.post("/users/{username}/follow", status_code=status.HTTP_200_OK)
+async def follow_user(
+    username: str,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    if username == current_user.username:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot follow yourself")
+
+    result = await session.execute(select(User).where(User.username == username))
+    followee = result.scalar_one_or_none()
+    if followee is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    existing = await session.execute(
+        select(Follow).where(
+            Follow.follower_id == current_user.id,
+            Follow.followee_id == followee.id,
+        )
+    )
+    if existing.scalar_one_or_none() is not None:
+        return {"detail": "Already following"}
+
+    follow = Follow(follower_id=current_user.id, followee_id=followee.id)
+    session.add(follow)
+    await session.commit()
+    return {"detail": "Followed"}
+
+
+@router.delete("/users/{username}/follow", status_code=status.HTTP_200_OK)
+async def unfollow_user(
+    username: str,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    result = await session.execute(select(User).where(User.username == username))
+    followee = result.scalar_one_or_none()
+    if followee is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    await session.execute(
+        delete(Follow).where(
+            Follow.follower_id == current_user.id,
+            Follow.followee_id == followee.id,
+        )
+    )
+    await session.commit()
+    return {"detail": "Unfollowed"}
+
+
+@router.get("/users/{username}/followers", response_model=list[UserProfilePublic])
+async def list_followers(
+    username: str,
+    session: AsyncSession = Depends(get_db),
+) -> list[UserProfilePublic]:
+    result = await session.execute(select(User).where(User.username == username))
+    target_user = result.scalar_one_or_none()
+    if target_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    followers_query = (
+        select(User)
+        .join(Follow, Follow.follower_id == User.id)
+        .where(Follow.followee_id == target_user.id)
+        .order_by(User.username)
+    )
+    followers_result = await session.execute(followers_query)
+    followers = followers_result.scalars().all()
+    return [UserProfilePublic.model_validate(user) for user in followers]
+
+
+@router.get("/users/{username}/following", response_model=list[UserProfilePublic])
+async def list_following(
+    username: str,
+    session: AsyncSession = Depends(get_db),
+) -> list[UserProfilePublic]:
+    result = await session.execute(select(User).where(User.username == username))
+    target_user = result.scalar_one_or_none()
+    if target_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    following_query = (
+        select(User)
+        .join(Follow, Follow.followee_id == User.id)
+        .where(Follow.follower_id == target_user.id)
+        .order_by(User.username)
+    )
+    following_result = await session.execute(following_query)
+    following = following_result.scalars().all()
+    return [UserProfilePublic.model_validate(user) for user in following]
