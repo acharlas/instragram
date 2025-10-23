@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.router import api_router
 from core.config import settings
+from services import RateLimitMiddleware, get_rate_limiter
 
 
 def create_app() -> FastAPI:
@@ -24,6 +25,13 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+    )
+
+    app.add_middleware(
+        RateLimitMiddleware,
+        limiter_factory=get_rate_limiter,
+        exempt_paths=("/healthz",),
+        exempt_prefixes=("/docs", "/openapi.json", "/redoc"),
     )
 
     app.include_router(api_router)

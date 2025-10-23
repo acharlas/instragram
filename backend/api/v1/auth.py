@@ -31,6 +31,7 @@ REFRESH_COOKIE = "refresh_token"
 COOKIE_PATH = "/"
 COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "lax"
 COOKIE_SECURE = settings.app_env != "local"
+MAX_ACTIVE_REFRESH_TOKENS = 5
 
 
 def _eq(column: Any, value: Any) -> ColumnElement[bool]:
@@ -48,7 +49,7 @@ class RegisterRequest(BaseModel):
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: str
     username: str
     email: EmailStr
     name: str | None = None
@@ -86,7 +87,7 @@ def _ensure_aware(dt: datetime) -> datetime:
 
 async def _store_refresh_token(
     session: AsyncSession,
-    user_id: int,
+    user_id: str,
     token: str,
 ) -> RefreshToken:
     payload = decode_token(token)
@@ -97,7 +98,29 @@ async def _store_refresh_token(
         expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
     )
     session.add(token_obj)
+    await session.flush()
+    await _enforce_refresh_token_limit(session, user_id)
     return token_obj
+
+
+async def _enforce_refresh_token_limit(session: AsyncSession, user_id: str) -> None:
+    revoked_column = cast(Any, RefreshToken.revoked_at)
+    issued_at_column = cast(Any, RefreshToken.issued_at)
+
+    result = await session.execute(
+        select(RefreshToken)
+        .where(
+            _eq(RefreshToken.user_id, user_id),
+            cast(ColumnElement[bool], revoked_column.is_(None)),
+        )
+        .order_by(issued_at_column.desc())
+    )
+    tokens = result.scalars().all()
+    surplus = tokens[MAX_ACTIVE_REFRESH_TOKENS:]
+    for token in surplus:
+        await session.delete(token)
+    if surplus:
+        await session.flush()
 
 
 async def _get_refresh_token(
@@ -261,13 +284,16 @@ async def refresh_tokens(
         )
 
     token_obj = await _get_refresh_token(session, refresh_token)
-    try:
-        user_id = int(payload["sub"])
-    except (KeyError, TypeError, ValueError):
+    sub_raw = payload.get("sub")
+    if isinstance(sub_raw, str):
+        user_id = sub_raw
+    elif isinstance(sub_raw, int):
+        user_id = str(sub_raw)
+    else:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token",
-        ) from None
+        )
 
     now = datetime.now(timezone.utc)
     token_obj.revoked_at = now

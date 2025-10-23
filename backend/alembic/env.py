@@ -13,9 +13,8 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from core.config import settings  # noqa: E402
-from sqlmodel import SQLModel  # noqa: E402
-from models import comment, follow, like, post, refresh_token, user  # noqa: F401
+from core.config import settings
+from sqlmodel import SQLModel
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:

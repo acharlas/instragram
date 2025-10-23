@@ -1,8 +1,9 @@
 """Application configuration models."""
 
 from functools import lru_cache
+from typing import Iterable
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,11 +28,28 @@ class Settings(BaseSettings):
         alias="DATABASE_URL",
     )
     redis_url: str = Field(default="redis://redis:6379/0", alias="REDIS_URL")
+    rate_limit_requests: int = Field(default=60, alias="RATE_LIMIT_REQUESTS")
+    rate_limit_window_seconds: int = Field(
+        default=60, alias="RATE_LIMIT_WINDOW_SECONDS"
+    )
+    rate_limit_ip_headers: list[str] = Field(
+        default_factory=lambda: ["x-forwarded-for"],
+        alias="RATE_LIMIT_IP_HEADERS",
+    )
+    rate_limit_trusted_proxies: list[str] = Field(
+        default_factory=lambda: ["127.0.0.1/32", "::1/128"],
+        alias="RATE_LIMIT_TRUSTED_PROXIES",
+    )
+
+    upload_max_bytes: int = Field(
+        default=5 * 1024 * 1024, alias="UPLOAD_MAX_BYTES"
+    )
 
     minio_endpoint: str = Field(default="minio:9000", alias="MINIO_ENDPOINT")
     minio_access_key: str = Field(default="minio", alias="MINIO_ACCESS_KEY")
     minio_secret_key: str = Field(default="minio123", alias="MINIO_SECRET_KEY")
     minio_bucket: str = Field(default="instagram-media", alias="MINIO_BUCKET")
+    minio_secure: bool = Field(default=False, alias="MINIO_SECURE")
 
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
     access_token_expire_minutes: int = Field(
@@ -46,11 +64,18 @@ class Settings(BaseSettings):
         alias="CORS_ORIGINS",
     )
 
+    @model_validator(mode="after")
+    def _ensure_secret_key(self) -> "Settings":
+        """Prevent insecure defaults outside of local/test environments."""
+        if self.secret_key == "change-me" and self.app_env not in {"local", "test"}:
+            raise ValueError("SECRET_KEY must be configured for non-local environments")
+        return self
+
     @property
     def cors_origin_list(self) -> list[str]:
         """Return CORS origins as a normalized list."""
         if isinstance(self.cors_origins, str):
-            origins = self.cors_origins.split(",")
+            origins: Iterable[str] = self.cors_origins.split(",")
         else:
             origins = self.cors_origins
         return [origin.strip() for origin in origins if origin.strip()]

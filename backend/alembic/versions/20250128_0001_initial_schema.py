@@ -16,7 +16,7 @@ TIMESTAMP_DEFAULT = sa.text("CURRENT_TIMESTAMP")
 def upgrade() -> None:
     op.create_table(
         "users",
-        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
+        sa.Column("id", sa.String(length=36), primary_key=True),
         sa.Column("username", sa.String(length=30), nullable=False),
         sa.Column("email", sa.String(length=255), nullable=False),
         sa.Column("password_hash", sa.String(length=255), nullable=False),
@@ -43,8 +43,8 @@ def upgrade() -> None:
 
     op.create_table(
         "follows",
-        sa.Column("follower_id", sa.Integer(), nullable=False),
-        sa.Column("followee_id", sa.Integer(), nullable=False),
+        sa.Column("follower_id", sa.String(length=36), nullable=False),
+        sa.Column("followee_id", sa.String(length=36), nullable=False),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -69,7 +69,7 @@ def upgrade() -> None:
     op.create_table(
         "posts",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
-        sa.Column("author_id", sa.Integer(), nullable=False),
+        sa.Column("author_id", sa.String(length=36), nullable=False),
         sa.Column("image_key", sa.String(length=255), nullable=False),
         sa.Column("caption", sa.Text(), nullable=True),
         sa.Column(
@@ -97,7 +97,7 @@ def upgrade() -> None:
         "comments",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
         sa.Column("post_id", sa.Integer(), nullable=False),
-        sa.Column("author_id", sa.Integer(), nullable=False),
+        sa.Column("author_id", sa.String(length=36), nullable=False),
         sa.Column("text", sa.Text(), nullable=False),
         sa.Column(
             "created_at",
@@ -124,7 +124,7 @@ def upgrade() -> None:
 
     op.create_table(
         "likes",
-        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("user_id", sa.String(length=36), nullable=False),
         sa.Column("post_id", sa.Integer(), nullable=False),
         sa.Column(
             "created_at",
@@ -146,7 +146,7 @@ def upgrade() -> None:
     op.create_table(
         "refresh_tokens",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
-        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("user_id", sa.String(length=36), nullable=False),
         sa.Column("token_hash", sa.String(length=128), nullable=False),
         sa.Column("issued_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),

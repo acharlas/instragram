@@ -15,6 +15,7 @@ from sqlmodel import SQLModel
 from api.deps import get_db
 from app import create_app
 from models import Comment, Follow, Like, Post, RefreshToken, User
+from services import RateLimiter, set_rate_limiter
 
 
 @pytest.fixture(scope="session")
@@ -81,3 +82,24 @@ async def db_session(session_maker) -> AsyncIterator[AsyncSession]:
     """Provide a raw database session to tests."""
     async with session_maker() as session:
         yield session
+
+
+class _InMemoryRedis:
+    def __init__(self) -> None:
+        self.data: dict[str, int] = {}
+
+    async def incr(self, key: str) -> int:
+        value = self.data.get(key, 0) + 1
+        self.data[key] = value
+        return value
+
+    async def expire(self, key: str, ttl: int) -> None:  # pragma: no cover - noop
+        return None
+
+
+@pytest.fixture(autouse=True)
+def _rate_limiter_stub() -> Iterator[None]:
+    limiter = RateLimiter(_InMemoryRedis(), limit=1_000, window_seconds=60)
+    set_rate_limiter(limiter)
+    yield
+    set_rate_limiter(None)

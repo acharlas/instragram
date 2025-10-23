@@ -6,16 +6,23 @@ from io import BytesIO
 from typing import Any, cast
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, ConfigDict, EmailStr
-from sqlalchemy import delete, select
+from sqlalchemy import and_, case, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
 from api.deps import get_current_user, get_db
 from core import settings
 from models import Follow, User
-from services import ensure_bucket, get_minio_client
+from services import (
+    JPEG_CONTENT_TYPE,
+    UploadTooLargeError,
+    ensure_bucket,
+    get_minio_client,
+    process_image_bytes,
+    read_upload_file,
+)
 
 router = APIRouter(tags=["users"])
 
@@ -24,10 +31,18 @@ def _eq(column: Any, value: Any) -> ColumnElement[bool]:
     return cast(ColumnElement[bool], column == value)
 
 
+def _ilike(column: Any, pattern: str) -> ColumnElement[bool]:
+    return cast(ColumnElement[bool], column.ilike(pattern))
+
+
+def _is_not_null(column: Any) -> ColumnElement[bool]:
+    return cast(ColumnElement[bool], column.isnot(None))
+
+
 class UserProfilePublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: str
     username: str
     name: str | None = None
     bio: str | None = None
@@ -36,6 +51,46 @@ class UserProfilePublic(BaseModel):
 
 class UserProfilePrivate(UserProfilePublic):
     email: EmailStr
+
+
+@router.get("/users/search", response_model=list[UserProfilePublic])
+async def search_users(
+    q: str = Query(..., min_length=1, max_length=30),
+    limit: int = Query(default=10, ge=1, le=50),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> list[UserProfilePublic]:
+    """Return users whose username or display name starts with the prefix."""
+    term = q.strip()
+    if not term:
+        return []
+
+    username_column = cast(Any, User.username)
+    name_column = cast(Any, User.name)
+
+    username_match = _ilike(username_column, f"{term}%")
+    name_match = and_(_is_not_null(name_column), _ilike(name_column, f"{term}%"))
+
+    stmt = (
+        select(User)
+        .where(or_(username_match, name_match))
+        .order_by(
+            case(
+                (username_match, 0),
+                (name_match, 1),
+                else_=2,
+            ),
+            User.username,
+        )
+        .limit(limit)
+    )
+
+    if current_user.id is not None:
+        stmt = stmt.where(~_eq(User.id, current_user.id))
+
+    result = await session.execute(stmt)
+    users = result.scalars().all()
+    return [UserProfilePublic.model_validate(user) for user in users]
 
 
 @router.get("/users/{username}", response_model=UserProfilePublic)
@@ -76,27 +131,30 @@ async def update_me(
         updated = True
 
     if avatar is not None:
-        data = await avatar.read()
-        if not data:
+        try:
+            data = await read_upload_file(avatar, settings.upload_max_bytes)
+            processed_bytes, processed_content_type = process_image_bytes(data)
+        except UploadTooLargeError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=str(exc),
+            ) from exc
+        except ValueError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Avatar file cannot be empty",
-            )
+                detail=str(exc),
+            ) from exc
 
-        extension = ""
-        if avatar.filename and "." in avatar.filename:
-            extension = avatar.filename.rsplit(".", 1)[1].lower()
-            extension = f".{extension}"
-        object_key = f"avatars/{uuid4().hex}{extension}"
+        object_key = f"avatars/{uuid4().hex}.jpg"
 
         client = get_minio_client()
         ensure_bucket(client)
         client.put_object(
             settings.minio_bucket,
             object_key,
-            data=BytesIO(data),
-            length=len(data),
-            content_type=avatar.content_type or "application/octet-stream",
+            data=BytesIO(processed_bytes),
+            length=len(processed_bytes),
+            content_type=processed_content_type or JPEG_CONTENT_TYPE,
         )
 
         current_user.avatar_key = object_key
