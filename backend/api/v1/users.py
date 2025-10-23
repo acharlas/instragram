@@ -6,9 +6,9 @@ from io import BytesIO
 from typing import Any, cast
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, ConfigDict, EmailStr
-from sqlalchemy import delete, select
+from sqlalchemy import and_, case, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
@@ -24,6 +24,10 @@ def _eq(column: Any, value: Any) -> ColumnElement[bool]:
     return cast(ColumnElement[bool], column == value)
 
 
+def _ilike(column: Any, pattern: str) -> ColumnElement[bool]:
+    return cast(ColumnElement[bool], column.ilike(pattern))
+
+
 class UserProfilePublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -36,6 +40,43 @@ class UserProfilePublic(BaseModel):
 
 class UserProfilePrivate(UserProfilePublic):
     email: EmailStr
+
+
+@router.get("/users/search", response_model=list[UserProfilePublic])
+async def search_users(
+    q: str = Query(..., min_length=1, max_length=30),
+    limit: int = Query(default=10, ge=1, le=50),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> list[UserProfilePublic]:
+    """Return users whose username or display name starts with the prefix."""
+    term = q.strip()
+    if not term:
+        return []
+
+    username_match = _ilike(User.username, f"{term}%")
+    name_match = and_(User.name.is_not(None), _ilike(User.name, f"{term}%"))
+
+    stmt = (
+        select(User)
+        .where(or_(username_match, name_match))
+        .order_by(
+            case(
+                (username_match, 0),
+                (name_match, 1),
+                else_=2,
+            ),
+            User.username,
+        )
+        .limit(limit)
+    )
+
+    if current_user.id is not None:
+        stmt = stmt.where(~_eq(User.id, current_user.id))
+
+    result = await session.execute(stmt)
+    users = result.scalars().all()
+    return [UserProfilePublic.model_validate(user) for user in users]
 
 
 @router.get("/users/{username}", response_model=UserProfilePublic)

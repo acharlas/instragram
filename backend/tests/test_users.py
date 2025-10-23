@@ -33,6 +33,14 @@ def build_payload() -> dict[str, str | None]:
     }
 
 
+def make_payload_for(username: str) -> dict[str, str | None]:
+    return {
+        "username": username,
+        "email": f"{username}@example.com",
+        "password": "Sup3rSecret!",
+    }
+
+
 @pytest.mark.asyncio
 async def test_get_user_profile(async_client: AsyncClient):
     payload = build_payload()
@@ -152,3 +160,93 @@ async def test_me_requires_auth(async_client: AsyncClient):
 async def test_update_me_requires_auth(async_client: AsyncClient):
     response = await async_client.patch("/api/v1/me", data={"name": "Nobody"})
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_search_users_returns_matches(async_client: AsyncClient):
+    viewer = make_payload_for("viewer")
+    await async_client.post("/api/v1/auth/register", json=viewer)
+
+    for username in ("alice", "alison", "bob"):
+        await async_client.post("/api/v1/auth/register", json=make_payload_for(username))
+
+    await async_client.post(
+        "/api/v1/auth/login",
+        json={"username": viewer["username"], "password": viewer["password"]},
+    )
+
+    response = await async_client.get("/api/v1/users/search", params={"q": "ALI"})
+    assert response.status_code == 200
+    usernames = [item["username"] for item in response.json()]
+    assert usernames == ["alice", "alison"]
+
+
+@pytest.mark.asyncio
+async def test_search_users_respects_limit(async_client: AsyncClient):
+    viewer = make_payload_for("searcher")
+    await async_client.post("/api/v1/auth/register", json=viewer)
+
+    for username in ("amy", "andy", "anna"):
+        await async_client.post("/api/v1/auth/register", json=make_payload_for(username))
+
+    await async_client.post(
+        "/api/v1/auth/login",
+        json={"username": viewer["username"], "password": viewer["password"]},
+    )
+
+    response = await async_client.get(
+        "/api/v1/users/search",
+        params={"q": "a", "limit": 2},
+    )
+    assert response.status_code == 200
+    usernames = [item["username"] for item in response.json()]
+    assert usernames == ["amy", "andy"]
+
+
+@pytest.mark.asyncio
+async def test_search_users_matches_display_name(async_client: AsyncClient):
+    viewer = make_payload_for("viewer3")
+    await async_client.post("/api/v1/auth/register", json=viewer)
+
+    user_payload = make_payload_for("demo_alex")
+    user_payload["name"] = "Alex Demo"
+    await async_client.post("/api/v1/auth/register", json=user_payload)
+
+    await async_client.post(
+        "/api/v1/auth/login",
+        json={"username": viewer["username"], "password": viewer["password"]},
+    )
+
+    username_response = await async_client.get(
+        "/api/v1/users/search",
+        params={"q": "demo"},
+    )
+    assert username_response.status_code == 200
+    assert [item["username"] for item in username_response.json()] == ["demo_alex"]
+
+    name_response = await async_client.get(
+        "/api/v1/users/search",
+        params={"q": "Alex Demo"},
+    )
+    assert name_response.status_code == 200
+    assert [item["username"] for item in name_response.json()] == ["demo_alex"]
+
+
+@pytest.mark.asyncio
+async def test_search_users_requires_auth(async_client: AsyncClient):
+    response = await async_client.get("/api/v1/users/search", params={"q": "any"})
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_search_users_returns_empty_for_whitespace(async_client: AsyncClient):
+    viewer = make_payload_for("viewer2")
+    await async_client.post("/api/v1/auth/register", json=viewer)
+    await async_client.post(
+        "/api/v1/auth/login",
+        json={"username": viewer["username"], "password": viewer["password"]},
+    )
+
+    response = await async_client.get("/api/v1/users/search", params={"q": "   "})
+    assert response.status_code == 200
+    assert response.json() == []
