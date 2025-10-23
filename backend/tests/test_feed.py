@@ -91,7 +91,7 @@ async def test_home_feed_missing_user_id_raises(db_session: AsyncSession):
         email="broken@example.com",
         password_hash="hash",
     )
-    user.id = None
+    user.id = None  # type: ignore[assignment]
 
     with pytest.raises(HTTPException):
         await feed_api.home_feed(session=db_session, current_user=user)  # type: ignore[arg-type]

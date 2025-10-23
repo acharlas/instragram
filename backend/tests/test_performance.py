@@ -7,15 +7,26 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
+from httpx import AsyncClient
+from typing import Any, cast
+
 from sqlalchemy import inspect, select
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+from sqlalchemy.sql import ColumnElement
 
 from core.security import hash_password
 from models import Follow, Post, User
 
 
+def _eq(column: Any, value: Any) -> ColumnElement[bool]:
+    return cast(ColumnElement[bool], column == value)
+
+
 @pytest.mark.asyncio
-async def test_follow_table_has_followee_index(db_session):
-    async with db_session.bind.connect() as conn:
+async def test_follow_table_has_followee_index(db_session: AsyncSession) -> None:
+    bind = db_session.bind
+    assert isinstance(bind, AsyncEngine)
+    async with bind.connect() as conn:
         indexes = await conn.run_sync(
             lambda sync_conn: inspect(sync_conn).get_indexes("follows")
         )
@@ -23,7 +34,7 @@ async def test_follow_table_has_followee_index(db_session):
 
 
 @pytest.mark.asyncio
-async def test_feed_query_is_fast(async_client, db_session):
+async def test_feed_query_is_fast(async_client: AsyncClient, db_session: AsyncSession) -> None:
     viewer_payload = {
         "username": "viewer_perf",
         "email": "viewer_perf@example.com",
@@ -39,7 +50,7 @@ async def test_feed_query_is_fast(async_client, db_session):
     )
 
     viewer_result = await db_session.execute(
-        select(User).where(User.username == viewer_payload["username"])
+        select(User).where(_eq(User.username, viewer_payload["username"]))
     )
     viewer = viewer_result.scalar_one()
 

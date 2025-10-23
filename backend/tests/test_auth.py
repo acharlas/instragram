@@ -145,10 +145,11 @@ async def test_refresh_token_store_limits_active_tokens(async_client, db_session
     )
     user = user_result.scalar_one()
 
+    issued_at_column = cast(Any, RefreshToken.__table__).c.issued_at  # type: ignore[attr-defined]
     tokens_result = await db_session.execute(
         select(RefreshToken)
         .where(_eq(RefreshToken.user_id, user.id))
-        .order_by(RefreshToken.issued_at.desc())
+        .order_by(issued_at_column.desc())
     )
     tokens = tokens_result.scalars().all()
 

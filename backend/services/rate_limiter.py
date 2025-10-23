@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from functools import lru_cache
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Protocol, runtime_checkable
 
 from fastapi import status
 from fastapi.responses import JSONResponse
@@ -16,12 +16,19 @@ from starlette.types import ASGIApp
 from core import settings
 
 
+@runtime_checkable
+class SupportsRateLimitClient(Protocol):
+    async def incr(self, key: str) -> int: ...
+
+    async def expire(self, key: str, ttl: int) -> None: ...
+
+
 class RateLimiter:
     """Simple fixed-window rate limiter backed by Redis."""
 
     def __init__(
         self,
-        redis_client: Redis,
+        redis_client: SupportsRateLimitClient,
         limit: int,
         window_seconds: int,
         prefix: str = "rate-limit",
@@ -46,7 +53,7 @@ class RateLimiter:
 
 
 @lru_cache
-def get_redis_client() -> Redis:
+def get_redis_client() -> SupportsRateLimitClient:
     """Return a cached async Redis client."""
     return Redis.from_url(settings.redis_url, decode_responses=False)
 

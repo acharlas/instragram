@@ -28,6 +28,10 @@ def _ilike(column: Any, pattern: str) -> ColumnElement[bool]:
     return cast(ColumnElement[bool], column.ilike(pattern))
 
 
+def _is_not_null(column: Any) -> ColumnElement[bool]:
+    return cast(ColumnElement[bool], column.isnot(None))
+
+
 class UserProfilePublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -54,8 +58,11 @@ async def search_users(
     if not term:
         return []
 
-    username_match = _ilike(User.username, f"{term}%")
-    name_match = and_(User.name.is_not(None), _ilike(User.name, f"{term}%"))
+    username_column = cast(Any, User.username)
+    name_column = cast(Any, User.name)
+
+    username_match = _ilike(username_column, f"{term}%")
+    name_match = and_(_is_not_null(name_column), _ilike(name_column, f"{term}%"))
 
     stmt = (
         select(User)

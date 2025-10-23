@@ -104,13 +104,16 @@ async def _store_refresh_token(
 
 
 async def _enforce_refresh_token_limit(session: AsyncSession, user_id: str) -> None:
+    revoked_column = cast(Any, RefreshToken.revoked_at)
+    issued_at_column = cast(Any, RefreshToken.issued_at)
+
     result = await session.execute(
         select(RefreshToken)
         .where(
             _eq(RefreshToken.user_id, user_id),
-            RefreshToken.revoked_at.is_(None),
+            cast(ColumnElement[bool], revoked_column.is_(None)),
         )
-        .order_by(RefreshToken.issued_at.desc())
+        .order_by(issued_at_column.desc())
     )
     tokens = result.scalars().all()
     surplus = tokens[MAX_ACTIVE_REFRESH_TOKENS:]
