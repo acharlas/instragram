@@ -15,7 +15,14 @@ from sqlalchemy.sql import ColumnElement
 from api.deps import get_current_user, get_db
 from core import settings
 from models import Follow, User
-from services import JPEG_CONTENT_TYPE, ensure_bucket, get_minio_client, process_image_bytes
+from services import (
+    JPEG_CONTENT_TYPE,
+    UploadTooLargeError,
+    ensure_bucket,
+    get_minio_client,
+    process_image_bytes,
+    read_upload_file,
+)
 
 router = APIRouter(tags=["users"])
 
@@ -124,9 +131,14 @@ async def update_me(
         updated = True
 
     if avatar is not None:
-        data = await avatar.read()
         try:
+            data = await read_upload_file(avatar, settings.upload_max_bytes)
             processed_bytes, processed_content_type = process_image_bytes(data)
+        except UploadTooLargeError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=str(exc),
+            ) from exc
         except ValueError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

@@ -7,12 +7,14 @@ from uuid import uuid4
 from typing import Any, cast
 
 import pytest
+from fastapi import status
 from httpx import AsyncClient
 from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
+from core.config import settings
 from models import User
 from api.v1 import users as users_api
 from services import storage
@@ -148,6 +150,22 @@ async def test_update_me_rejects_invalid_image(async_client: AsyncClient, monkey
     files = {"avatar": ("avatar.jpg", b"not-an-image", "image/jpeg")}
     response = await async_client.patch("/api/v1/me", files=files)
     assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_update_me_rejects_oversized_avatar(async_client: AsyncClient):
+    payload = build_payload()
+    await async_client.post("/api/v1/auth/register", json=payload)
+    await async_client.post(
+        "/api/v1/auth/login",
+        json={"username": payload["username"], "password": payload["password"]},
+    )
+
+    oversized = b"0" * (settings.upload_max_bytes + 1)
+    files = {"avatar": ("avatar.png", oversized, "image/png")}
+
+    response = await async_client.patch("/api/v1/me", files=files)
+    assert response.status_code == status.HTTP_413_CONTENT_TOO_LARGE
 
 
 @pytest.mark.asyncio

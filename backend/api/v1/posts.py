@@ -15,7 +15,13 @@ from sqlalchemy.sql import ColumnElement
 from api.deps import get_current_user, get_db
 from core import settings
 from models import Follow, Post, User
-from services import ensure_bucket, get_minio_client, process_image_bytes
+from services import (
+    UploadTooLargeError,
+    ensure_bucket,
+    get_minio_client,
+    process_image_bytes,
+    read_upload_file,
+)
 
 router = APIRouter(prefix="/posts", tags=["posts"])
 
@@ -40,9 +46,14 @@ async def create_post(
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> PostResponse:
-    data = await image.read()
     try:
+        data = await read_upload_file(image, settings.upload_max_bytes)
         processed_bytes, content_type = process_image_bytes(data)
+    except UploadTooLargeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=str(exc),
+        ) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

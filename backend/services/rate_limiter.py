@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from functools import lru_cache
+from ipaddress import ip_address, ip_network, IPv4Address, IPv4Network, IPv6Address, IPv6Network
 from typing import Callable, Iterable, Protocol, runtime_checkable
 
 from fastapi import status
@@ -21,6 +22,64 @@ class SupportsRateLimitClient(Protocol):
     async def incr(self, key: str) -> int: ...
 
     async def expire(self, key: str, ttl: int) -> None: ...
+
+
+def _parse_networks() -> tuple[IPv4Network | IPv6Network, ...]:
+    networks: list[IPv4Network | IPv6Network] = []
+    for cidr in settings.rate_limit_trusted_proxies:
+        try:
+            networks.append(ip_network(cidr, strict=False))
+        except ValueError as exc:  # pragma: no cover - invalid configuration
+            raise ValueError(f"Invalid CIDR in RATE_LIMIT_TRUSTED_PROXIES: {cidr}") from exc
+    return tuple(networks)
+
+
+@lru_cache
+def _trusted_proxy_networks() -> tuple[IPv4Network | IPv6Network, ...]:
+    return _parse_networks()
+
+
+def _extract_client_ip_from_headers(request: Request) -> str | None:
+    for header in settings.rate_limit_ip_headers:
+        value = request.headers.get(header)
+        if not value:
+            continue
+        for candidate in value.split(","):
+            ip_candidate = candidate.strip()
+            if not ip_candidate:
+                continue
+            try:
+                ip_address(ip_candidate)
+            except ValueError:
+                continue
+            return ip_candidate
+    return None
+
+
+def _remote_ip(request: Request) -> tuple[str | None, IPv4Address | IPv6Address | None]:
+    host = request.client.host if request.client else None
+    if not host:
+        return None, None
+    try:
+        addr = ip_address(host)
+    except ValueError:
+        return host, None
+    return host, addr
+
+
+def default_client_identifier(request: Request) -> str:
+    """Resolve a stable client identifier for rate limiting."""
+    remote_host, remote_ip = _remote_ip(request)
+
+    if remote_ip is not None and any(remote_ip in network for network in _trusted_proxy_networks()):
+        forwarded_ip = _extract_client_ip_from_headers(request)
+        if forwarded_ip:
+            return forwarded_ip
+
+    if remote_host:
+        return remote_host
+
+    return "anonymous"
 
 
 class RateLimiter:
@@ -88,12 +147,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         limiter_factory: Callable[[], RateLimiter],
         exempt_paths: Iterable[str] | None = None,
         exempt_prefixes: Iterable[str] | None = None,
+        client_identifier: Callable[[Request], str] | None = None,
     ) -> None:
         super().__init__(app)
         self._limiter: RateLimiter | None = None
         self.limiter_factory = limiter_factory
         self.exempt_paths = set(exempt_paths or ())
         self.exempt_prefixes = tuple(exempt_prefixes or ())
+        self.client_identifier = client_identifier or default_client_identifier
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
         if request.scope["type"] != "http":
@@ -111,8 +172,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if limiter is None:
             return await call_next(request)
 
-        client_host = request.client.host if request.client else "anonymous"
-        if not await limiter.allow(client_host):
+        client_key = self.client_identifier(request) or "anonymous"
+        if not await limiter.allow(client_key):
             return JSONResponse(
                 {"detail": "Too Many Requests"},
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,

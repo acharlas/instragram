@@ -40,3 +40,9 @@ def test_process_image_bytes_rejects_empty():
 def test_process_image_bytes_invalid_data():
     with pytest.raises(ValueError):
         process_image_bytes(b"not-an-image")
+
+
+def test_process_image_bytes_rejects_excessive_dimensions():
+    large = generate_image(8000, 8000)
+    with pytest.raises(ValueError):
+        process_image_bytes(large)
