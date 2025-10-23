@@ -115,6 +115,20 @@ async def test_get_post_not_found(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_create_post_rejects_invalid_image(async_client: AsyncClient):
+    payload = make_user_payload("invalid")
+    await async_client.post("/api/v1/auth/register", json=payload)
+    await async_client.post(
+        "/api/v1/auth/login",
+        json={"username": payload["username"], "password": payload["password"]},
+    )
+
+    files = {"image": ("bad.png", b"", "image/png")}
+    response = await async_client.post("/api/v1/posts", files=files)
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
 async def test_feed_returns_followee_posts(
     async_client: AsyncClient,
     db_session: AsyncSession,
