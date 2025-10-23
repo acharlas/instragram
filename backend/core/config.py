@@ -1,10 +1,25 @@
 """Application configuration models."""
 
 from functools import lru_cache
-from typing import Iterable
+from types import MethodType
+from typing import Annotated, Iterable
 
 from pydantic import Field, model_validator
+from pydantic.functional_validators import BeforeValidator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _split_comma_separated(value: object) -> object:
+    """Convert comma-separated env strings into trimmed lists."""
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    return value
+
+
+CommaSeparatedList = Annotated[list[str], BeforeValidator(_split_comma_separated)]
+COMMA_SEPARATED_FIELDS = frozenset(
+    {"rate_limit_ip_headers", "rate_limit_trusted_proxies", "cors_origins"}
+)
 
 
 class Settings(BaseSettings):
@@ -32,11 +47,11 @@ class Settings(BaseSettings):
     rate_limit_window_seconds: int = Field(
         default=60, alias="RATE_LIMIT_WINDOW_SECONDS"
     )
-    rate_limit_ip_headers: list[str] = Field(
+    rate_limit_ip_headers: CommaSeparatedList = Field(
         default_factory=lambda: ["x-forwarded-for"],
         alias="RATE_LIMIT_IP_HEADERS",
     )
-    rate_limit_trusted_proxies: list[str] = Field(
+    rate_limit_trusted_proxies: CommaSeparatedList = Field(
         default_factory=lambda: ["127.0.0.1/32", "::1/128"],
         alias="RATE_LIMIT_TRUSTED_PROXIES",
     )
@@ -59,7 +74,7 @@ class Settings(BaseSettings):
         default=60 * 24 * 7, alias="REFRESH_TOKEN_EXPIRE_MINUTES"
     )
 
-    cors_origins: list[str] = Field(
+    cors_origins: CommaSeparatedList = Field(
         default_factory=lambda: ["http://localhost:3000"],
         alias="CORS_ORIGINS",
     )
@@ -70,6 +85,47 @@ class Settings(BaseSettings):
         if self.secret_key == "change-me" and self.app_env not in {"local", "test"}:
             raise ValueError("SECRET_KEY must be configured for non-local environments")
         return self
+
+    @classmethod
+    def _patch_comma_sources(cls, source) -> None:
+        """Allow simple CSV values for list settings in env-backed sources."""
+        if source is None or getattr(source, "_comma_patch_applied", False):
+            return
+
+        original = source.prepare_field_value
+
+        def wrapper(self, field_name, field, value, value_is_complex):
+            if (
+                field_name in COMMA_SEPARATED_FIELDS
+                and isinstance(value, str)
+                and value is not None
+            ):
+                stripped = value.strip()
+                if stripped and not stripped.startswith("["):
+                    return _split_comma_separated(stripped)
+            return original(field_name, field, value, value_is_complex)
+
+        source.prepare_field_value = MethodType(wrapper, source)
+        setattr(source, "_comma_patch_applied", True)
+
+    @classmethod
+    def settings_customise_sources(  # type: ignore[override]
+        cls,
+        settings_cls,
+        init_settings,
+        env_settings,
+        dotenv_settings,
+        file_secret_settings,
+    ):
+        cls._patch_comma_sources(env_settings)
+        cls._patch_comma_sources(dotenv_settings)
+        return super().settings_customise_sources(
+            settings_cls,
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+        )
 
     @property
     def cors_origin_list(self) -> list[str]:
