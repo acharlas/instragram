@@ -14,7 +14,7 @@ from sqlalchemy.sql import ColumnElement
 
 from api.deps import get_current_user, get_db
 from core import settings
-from models import Post, User
+from models import Follow, Post, User
 from services import ensure_bucket, get_minio_client, process_image_bytes
 
 router = APIRouter(prefix="/posts", tags=["posts"])
@@ -86,6 +86,27 @@ async def list_posts(
         select(Post)
         .where(_eq(Post.author_id, current_user.id))
         .order_by(Post.created_at.desc())  # type: ignore[attr-defined]
+    )
+    posts = result.scalars().all()
+    return [PostResponse.model_validate(post) for post in posts]
+
+
+@router.get("/feed", response_model=list[PostResponse])
+async def get_feed(
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[PostResponse]:
+    if current_user.id is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="User record missing identifier",
+        )
+
+    result = await session.execute(
+        select(Post)
+            .join(Follow, _eq(Follow.followee_id, Post.author_id))
+            .where(_eq(Follow.follower_id, current_user.id))
+            .order_by(Post.created_at.desc())  # type: ignore[attr-defined]
     )
     posts = result.scalars().all()
     return [PostResponse.model_validate(post) for post in posts]
