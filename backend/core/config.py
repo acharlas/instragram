@@ -36,13 +36,12 @@ class Settings(BaseSettings):
     app_env: str = Field(default="local", alias="APP_ENV")
     debug: bool = Field(default=False, alias="DEBUG")
 
-    secret_key: str = Field(default="change-me", alias="SECRET_KEY")
+    secret_key: str = Field(alias="SECRET_KEY")
 
     database_url: str = Field(
-        default="postgresql+asyncpg://app:app@postgres:5432/instagram",
         alias="DATABASE_URL",
     )
-    redis_url: str = Field(default="redis://redis:6379/0", alias="REDIS_URL")
+    redis_url: str = Field(alias="REDIS_URL")
     rate_limit_requests: int = Field(default=60, alias="RATE_LIMIT_REQUESTS")
     rate_limit_window_seconds: int = Field(
         default=60, alias="RATE_LIMIT_WINDOW_SECONDS"
@@ -61,8 +60,8 @@ class Settings(BaseSettings):
     )
 
     minio_endpoint: str = Field(default="minio:9000", alias="MINIO_ENDPOINT")
-    minio_access_key: str = Field(default="minio", alias="MINIO_ACCESS_KEY")
-    minio_secret_key: str = Field(default="minio123", alias="MINIO_SECRET_KEY")
+    minio_access_key: str = Field(alias="MINIO_ACCESS_KEY")
+    minio_secret_key: str = Field(alias="MINIO_SECRET_KEY")
     minio_bucket: str = Field(default="instagram-media", alias="MINIO_BUCKET")
     minio_secure: bool = Field(default=False, alias="MINIO_SECURE")
 
@@ -79,10 +78,32 @@ class Settings(BaseSettings):
         alias="CORS_ORIGINS",
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_lists(cls, values: dict[str, object]) -> dict[str, object]:
+        """Allow comma-separated strings for list fields in env files."""
+        for field_name in (
+            "rate_limit_ip_headers",
+            "rate_limit_trusted_proxies",
+            "cors_origins",
+        ):
+            field_info = cls.model_fields[field_name]
+            possible_keys = [field_name]
+            if field_info.alias:
+                possible_keys.append(field_info.alias)
+            for key in possible_keys:
+                raw = values.get(key)
+                if isinstance(raw, str):
+                    normalized = [item.strip() for item in raw.split(",") if item.strip()]
+                    values[field_name] = normalized
+                    values[key] = normalized
+                    break
+        return values
+
     @model_validator(mode="after")
     def _ensure_secret_key(self) -> "Settings":
         """Prevent insecure defaults outside of local/test environments."""
-        if self.secret_key == "change-me" and self.app_env not in {"local", "test"}:
+        if not self.secret_key and self.app_env not in {"local", "test"}:
             raise ValueError("SECRET_KEY must be configured for non-local environments")
         return self
 
