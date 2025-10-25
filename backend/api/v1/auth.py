@@ -195,14 +195,13 @@ async def register(
     session: AsyncSession = Depends(get_db),
 ) -> UserResponse:
     existing = await session.execute(
-        select(User).where(
-            or_(
-                _eq(User.username, payload.username),
-                _eq(User.email, payload.email),
-            )
+        select(User)
+        .where(
+            or_(_eq(User.username, payload.username), _eq(User.email, payload.email))
         )
+        .limit(1)
     )
-    if existing.scalar_one_or_none():
+    if existing.scalar_one_or_none() is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="User with that username or email already exists",
