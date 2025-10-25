@@ -1,7 +1,9 @@
 import type { NextAuthOptions } from "next-auth";
+import * as nextAuth from "next-auth";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import * as authModule from "../../app/api/auth/[...nextauth]/route";
+import { getSessionServer } from "../../lib/auth/session";
 
 type CredentialsProvider = {
   id: string;
@@ -194,6 +196,18 @@ describe("HTTP helper functions", () => {
     await expect(authModule.fetchUserProfile("access-token")).rejects.toThrow(
       "Failed to load profile",
     );
+  });
+});
+
+describe("getSessionServer", () => {
+  it("delegates to next-auth getServerSession with authOptions", async () => {
+    const session = { user: { id: "user-id" } } as unknown;
+    const getter = vi.fn().mockResolvedValue(session);
+
+    const result = await getSessionServer(getter as unknown as typeof nextAuth.getServerSession);
+
+    expect(getter).toHaveBeenCalledWith(authModule.authOptions);
+    expect(result).toBe(session);
   });
 });
 
