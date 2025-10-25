@@ -79,6 +79,8 @@ async def test_create_and_get_post(
     created = create_response.json()
     assert created["caption"] == "First shot!"
     assert created["image_key"].endswith(".jpg")
+    assert created["like_count"] == 0
+    assert created["viewer_has_liked"] is False
 
     assert stored_objects, "Image should be uploaded"
 
@@ -90,10 +92,14 @@ async def test_create_and_get_post(
     get_response = await async_client.get(f"/api/v1/posts/{post_id}")
     assert get_response.status_code == 200
     assert get_response.json()["id"] == post_id
+    assert get_response.json()["like_count"] == 0
 
     list_response = await async_client.get("/api/v1/posts")
     assert list_response.status_code == 200
-    assert len(list_response.json()) == 1
+    listed = list_response.json()
+    assert len(listed) == 1
+    assert listed[0]["like_count"] == 0
+    assert listed[0]["viewer_has_liked"] is False
 
 
 @pytest.mark.asyncio
@@ -144,7 +150,9 @@ async def test_get_post_requires_follow_or_ownership(
 
     response = await async_client.get(f"/api/v1/posts/{post.id}")
     assert response.status_code == 200
-    assert response.json()["caption"] == "Shared"
+    payload = response.json()
+    assert payload["caption"] == "Shared"
+    assert payload["like_count"] == 0
 
     await async_client.post(
         "/api/v1/auth/login",
@@ -308,6 +316,7 @@ async def test_like_and_unlike_post(
 
     like_response = await async_client.post(f"/api/v1/posts/{post.id}/likes")
     assert like_response.status_code == 200
+    assert like_response.json()["like_count"] == 1
     exists = await db_session.execute(
         select(Like).where(_eq(Like.user_id, viewer_id), _eq(Like.post_id, post.id))
     )
@@ -316,9 +325,11 @@ async def test_like_and_unlike_post(
     # liking again is idempotent
     again = await async_client.post(f"/api/v1/posts/{post.id}/likes")
     assert again.status_code == 200
+    assert again.json()["like_count"] == 1
 
     unlike_response = await async_client.delete(f"/api/v1/posts/{post.id}/likes")
     assert unlike_response.status_code == 200
+    assert unlike_response.json()["like_count"] == 0
     exists_after = await db_session.execute(
         select(Like).where(_eq(Like.user_id, viewer_id), _eq(Like.post_id, post.id))
     )
@@ -424,6 +435,8 @@ async def test_feed_returns_followee_posts(
 
     assert [item["caption"] for item in feed] == ["Followee2 newest", "Followee1 older"]
     assert all(item["author_id"] in {followee1_id, followee2_id} for item in feed)
+    assert all(item["like_count"] == 0 for item in feed)
+    assert all(item["viewer_has_liked"] is False for item in feed)
 
 
 @pytest.mark.asyncio

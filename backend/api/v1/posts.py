@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from io import BytesIO
 from typing import Any, cast
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
@@ -39,9 +39,18 @@ class PostResponse(BaseModel):
     author_name: str | None = None
     image_key: str
     caption: str | None = None
+    like_count: int = 0
+    viewer_has_liked: bool = False
 
     @classmethod
-    def from_post(cls, post: Post, author_name: str | None = None) -> "PostResponse":
+    def from_post(
+        cls,
+        post: Post,
+        author_name: str | None = None,
+        *,
+        like_count: int = 0,
+        viewer_has_liked: bool = False,
+    ) -> "PostResponse":
         if post.id is None:
             raise ValueError("Post record missing identifier")
         return cls(
@@ -50,6 +59,8 @@ class PostResponse(BaseModel):
             author_name=author_name,
             image_key=post.image_key,
             caption=post.caption,
+            like_count=like_count,
+            viewer_has_liked=viewer_has_liked,
         )
 
 
@@ -60,6 +71,7 @@ class CommentResponse(BaseModel):
     post_id: int
     author_id: str
     author_name: str | None = None
+    author_username: str | None = None
     text: str
     created_at: datetime
 
@@ -68,6 +80,7 @@ class CommentResponse(BaseModel):
         cls,
         comment: Comment,
         author_name: str | None = None,
+        author_username: str | None = None,
     ) -> "CommentResponse":
         if comment.id is None:
             raise ValueError("Comment record missing identifier")
@@ -76,6 +89,7 @@ class CommentResponse(BaseModel):
             post_id=comment.post_id,
             author_id=comment.author_id,
             author_name=author_name,
+            author_username=author_username,
             text=comment.text,
             created_at=comment.created_at,
         )
@@ -86,6 +100,42 @@ CommentResponse.model_rebuild()
 
 class CommentCreateRequest(BaseModel):
     text: str = Field(min_length=1, max_length=500)
+
+
+async def collect_like_meta(
+    session: AsyncSession,
+    post_ids: list[int],
+    viewer_id: str | None,
+) -> tuple[dict[int, int], set[int]]:
+    if not post_ids:
+        return {}, set()
+
+    count_result = await session.execute(
+        select(Like.post_id, func.count(Like.user_id))
+        .where(Like.post_id.in_(post_ids))
+        .group_by(Like.post_id)
+    )
+    count_map = {post_id: int(total) for post_id, total in count_result.all()}
+
+    if viewer_id is None:
+        return count_map, set()
+
+    viewer_result = await session.execute(
+        select(Like.post_id).where(
+            _eq(Like.user_id, viewer_id),
+            Like.post_id.in_(post_ids),
+        )
+    )
+    liked_set = {row[0] for row in viewer_result.all()}
+    return count_map, liked_set
+
+
+async def _get_like_count(session: AsyncSession, post_id: int) -> int:
+    result = await session.execute(
+        select(func.count(Like.user_id)).where(_eq(Like.post_id, post_id))
+    )
+    count = result.scalar_one()
+    return int(count or 0)
 
 
 async def _user_can_view_post(
@@ -150,7 +200,12 @@ async def create_post(
     session.add(post)
     await session.commit()
     await session.refresh(post)
-    return PostResponse.from_post(post, author_name=current_user.name)
+    return PostResponse.from_post(
+        post,
+        author_name=current_user.name,
+        like_count=0,
+        viewer_has_liked=False,
+    )
 
 
 @router.get("", response_model=list[PostResponse])
@@ -158,14 +213,28 @@ async def list_posts(
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[PostResponse]:
+    viewer_id = current_user.id
+    if viewer_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="User record missing identifier",
+        )
+
     result = await session.execute(
         select(Post)
-        .where(_eq(Post.author_id, current_user.id))
+        .where(_eq(Post.author_id, viewer_id))
         .order_by(Post.created_at.desc())  # type: ignore[attr-defined]
     )
     posts = result.scalars().all()
+    post_ids = [post.id for post in posts if post.id is not None]
+    count_map, liked_set = await collect_like_meta(session, post_ids, viewer_id)
     return [
-        PostResponse.from_post(post, author_name=current_user.name)
+        PostResponse.from_post(
+            post,
+            author_name=current_user.name,
+            like_count=count_map.get(post.id, 0) if post.id is not None else 0,
+            viewer_has_liked=post.id in liked_set if post.id is not None else False,
+        )
         for post in posts
     ]
 
@@ -189,8 +258,15 @@ async def get_feed(
         .order_by(Post.created_at.desc())  # type: ignore[attr-defined]
     )
     rows = result.all()
+    post_ids = [post.id for post, _ in rows if post.id is not None]
+    count_map, liked_set = await collect_like_meta(session, post_ids, current_user.id)
     return [
-        PostResponse.from_post(post, author_name=author_name)
+        PostResponse.from_post(
+            post,
+            author_name=author_name,
+            like_count=count_map.get(post.id, 0) if post.id is not None else 0,
+            viewer_has_liked=post.id in liked_set if post.id is not None else False,
+        )
         for post, author_name in rows
     ]
 
@@ -223,8 +299,20 @@ async def get_post(
     if not await _user_can_view_post(session, viewer_id, post.author_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
 
-    return PostResponse.from_post(post, author_name=author_name)
+    post_id_value = post.id
+    like_count = 0
+    viewer_has_liked = False
+    if post_id_value is not None:
+        count_map, liked_set = await collect_like_meta(session, [post_id_value], viewer_id)
+        like_count = count_map.get(post_id_value, 0)
+        viewer_has_liked = post_id_value in liked_set
 
+    return PostResponse.from_post(
+        post,
+        author_name=author_name,
+        like_count=like_count,
+        viewer_has_liked=viewer_has_liked,
+    )
 
 @router.get("/{post_id}/comments", response_model=list[CommentResponse])
 async def get_post_comments(
@@ -252,15 +340,19 @@ async def get_post_comments(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
 
     result = await session.execute(
-        select(Comment, User.name)
+        select(Comment, User.name, User.username)
         .join(User, _eq(User.id, Comment.author_id))
         .where(_eq(Comment.post_id, post_id))
         .order_by(Comment.created_at.asc())
     )
     rows = result.all()
     return [
-        CommentResponse.from_comment(comment, author_name=author_name)
-        for comment, author_name in rows
+        CommentResponse.from_comment(
+            comment,
+            author_name=author_name,
+            author_username=username,
+        )
+        for comment, author_name, username in rows
     ]
 
 
@@ -310,7 +402,12 @@ async def create_comment(
     await session.refresh(comment)
 
     author_name = current_user.name
-    return CommentResponse.from_comment(comment, author_name=author_name)
+    author_username = current_user.username
+    return CommentResponse.from_comment(
+        comment,
+        author_name=author_name,
+        author_username=author_username,
+    )
 
 
 @router.post("/{post_id}/likes", status_code=status.HTTP_200_OK)
@@ -318,7 +415,7 @@ async def like_post(
     post_id: int,
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> dict[str, str]:
+) -> dict[str, Any]:
     viewer_id = current_user.id
     if viewer_id is None:
         raise HTTPException(
@@ -346,10 +443,8 @@ async def like_post(
         like = Like(user_id=viewer_id, post_id=post_id)
         session.add(like)
         await session.commit()
-    else:
-        await session.commit()
-
-    return {"detail": "Liked"}
+    like_count = await _get_like_count(session, post_id)
+    return {"detail": "Liked", "like_count": like_count}
 
 
 @router.delete("/{post_id}/likes", status_code=status.HTTP_200_OK)
@@ -357,7 +452,7 @@ async def unlike_post(
     post_id: int,
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> dict[str, str]:
+) -> dict[str, Any]:
     viewer_id = current_user.id
     if viewer_id is None:
         raise HTTPException(
@@ -384,6 +479,5 @@ async def unlike_post(
     if like_obj is not None:
         await session.delete(like_obj)
         await session.commit()
-        return {"detail": "Unliked"}
-
-    return {"detail": "Unliked"}
+    like_count = await _get_like_count(session, post_id)
+    return {"detail": "Unliked", "like_count": like_count}
