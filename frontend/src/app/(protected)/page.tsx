@@ -1,5 +1,8 @@
+import Image from "next/image";
+
 import { apiServerFetch } from "@/lib/api/client";
 import { getSessionServer } from "@/lib/auth/session";
+import { buildImageUrl } from "@/lib/image";
 import { sanitizeHtml } from "@/lib/sanitize";
 import type { FeedPost } from "@/types/feed";
 
@@ -23,6 +26,7 @@ async function getHomeFeed(accessToken?: string): Promise<FeedPost[]> {
 
 function PostCard({ post }: { post: FeedPost }) {
   const safeCaption = post.caption ? sanitizeHtml(post.caption) : "";
+  const imageUrl = buildImageUrl(post.image_key);
 
   return (
     <article className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
@@ -36,10 +40,15 @@ function PostCard({ post }: { post: FeedPost }) {
         </div>
       </header>
 
-      <div className="mb-3 aspect-square w-full overflow-hidden rounded-xl bg-zinc-800">
-        <div className="flex h-full items-center justify-center text-zinc-500">
-          {post.image_key}
-        </div>
+      <div className="relative mb-3 aspect-square w-full overflow-hidden rounded-xl bg-zinc-800">
+        <Image
+          src={imageUrl}
+          alt={`Publication ${post.id}`}
+          fill
+          className="object-cover"
+          sizes="(max-width: 768px) 100vw, 600px"
+          unoptimized
+        />
       </div>
 
       {safeCaption ? (
@@ -53,7 +62,8 @@ function PostCard({ post }: { post: FeedPost }) {
 
 export default async function ProtectedHomePage() {
   const session = await getSessionServer();
-  const posts = await getHomeFeed(session?.accessToken as string | undefined);
+  const accessToken = session?.accessToken as string | undefined;
+  const posts = await getHomeFeed(accessToken);
 
   return (
     <section className="mx-auto flex w-full max-w-2xl flex-col gap-6 py-8">

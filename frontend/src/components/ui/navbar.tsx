@@ -25,7 +25,7 @@ export function NavBar({ username }: NavBarProps) {
   const pathname = usePathname();
 
   return (
-    <aside className="flex h-screen w-56 flex-col border-r border-zinc-800 bg-zinc-950 p-6 text-zinc-100">
+    <aside className="sticky top-0 flex h-screen w-56 flex-col border-r border-zinc-800 bg-zinc-950 p-6 text-zinc-100">
       <div className="mb-8 text-2xl font-semibold">Instragram</div>
 
       <nav className="flex-1 space-y-2">
