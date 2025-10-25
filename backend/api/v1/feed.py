@@ -32,10 +32,14 @@ async def home_feed(
         )
 
     result = await session.execute(
-        select(Post)
+        select(Post, User.name)
+        .join(User, _eq(User.id, Post.author_id))
         .join(Follow, _eq(Follow.followee_id, Post.author_id))
         .where(_eq(Follow.follower_id, current_user.id))
         .order_by(Post.created_at.desc())  # type: ignore[attr-defined]
     )
-    posts = result.scalars().all()
-    return [PostResponse.model_validate(post) for post in posts]
+    rows = result.all()
+    return [
+        PostResponse.from_post(post, author_name=author_name)
+        for post, author_name in rows
+    ]

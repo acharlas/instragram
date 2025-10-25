@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
 from core.config import settings
-from models import Post
+from models import Comment, Post
 from api.v1 import posts as posts_api
 from services import storage
 
@@ -114,6 +114,115 @@ async def test_get_post_not_found(async_client: AsyncClient):
 
     response = await async_client.get("/api/v1/posts/999")
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_post_requires_follow_or_ownership(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+):
+    viewer_payload = make_user_payload("viewer")
+    author_payload = make_user_payload("author")
+    stranger_payload = make_user_payload("stranger")
+
+    await async_client.post("/api/v1/auth/register", json=viewer_payload)
+    author_response = await async_client.post("/api/v1/auth/register", json=author_payload)
+    await async_client.post("/api/v1/auth/register", json=stranger_payload)
+
+    author_id = author_response.json()["id"]
+
+    await async_client.post(
+        "/api/v1/auth/login",
+        json={"username": viewer_payload["username"], "password": viewer_payload["password"]},
+    )
+    await async_client.post(f"/api/v1/users/{author_payload['username']}/follow")
+
+    post = Post(author_id=author_id, image_key="posts/test.jpg", caption="Shared")
+    db_session.add(post)
+    await db_session.commit()
+    await db_session.refresh(post)
+
+    response = await async_client.get(f"/api/v1/posts/{post.id}")
+    assert response.status_code == 200
+    assert response.json()["caption"] == "Shared"
+
+    await async_client.post(
+        "/api/v1/auth/login",
+        json={"username": stranger_payload["username"], "password": stranger_payload["password"]},
+    )
+    forbidden = await async_client.get(f"/api/v1/posts/{post.id}")
+    assert forbidden.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_post_comments_requires_access(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+):
+    viewer_payload = make_user_payload("viewer")
+    author_payload = make_user_payload("author")
+
+    viewer_response = await async_client.post("/api/v1/auth/register", json=viewer_payload)
+    author_response = await async_client.post("/api/v1/auth/register", json=author_payload)
+
+    viewer_id = viewer_response.json()["id"]
+    author_id = author_response.json()["id"]
+
+    await async_client.post(
+        "/api/v1/auth/login",
+        json={"username": viewer_payload["username"], "password": viewer_payload["password"]},
+    )
+    await async_client.post(f"/api/v1/users/{author_payload['username']}/follow")
+
+    post = Post(author_id=author_id, image_key="posts/test-comments.jpg", caption="Commented")
+    db_session.add(post)
+    await db_session.commit()
+    await db_session.refresh(post)
+
+    now = datetime.now(timezone.utc)
+    comments = [
+        Comment(
+            post_id=post.id,
+            author_id=viewer_id,
+            text="First!",
+            created_at=now,
+            updated_at=now,
+        ),
+        Comment(
+            post_id=post.id,
+            author_id=author_id,
+            text="Thanks!",
+            created_at=now + timedelta(seconds=5),
+            updated_at=now + timedelta(seconds=5),
+        ),
+    ]
+    for comment in comments:
+        db_session.add(comment)
+    await db_session.commit()
+
+    response = await async_client.get(f"/api/v1/posts/{post.id}/comments")
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["text"] for item in payload] == ["First!", "Thanks!"]
+
+    await async_client.post("/api/v1/auth/logout")
+    author_login = await async_client.post(
+        "/api/v1/auth/login",
+        json={"username": author_payload["username"], "password": author_payload["password"]},
+    )
+    assert author_login.status_code == 200
+    author_response = await async_client.get(f"/api/v1/posts/{post.id}/comments")
+    assert author_response.status_code == 200
+
+    # Unrelated user cannot view comments
+    outsider_payload = make_user_payload("outsider")
+    await async_client.post("/api/v1/auth/register", json=outsider_payload)
+    await async_client.post(
+        "/api/v1/auth/login",
+        json={"username": outsider_payload["username"], "password": outsider_payload["password"]},
+    )
+    denied = await async_client.get(f"/api/v1/posts/{post.id}/comments")
+    assert denied.status_code == 404
 
 
 @pytest.mark.asyncio

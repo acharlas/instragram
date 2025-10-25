@@ -27,16 +27,23 @@ async function getHomeFeed(accessToken?: string): Promise<FeedPost[]> {
 function PostCard({ post }: { post: FeedPost }) {
   const safeCaption = post.caption ? sanitizeHtml(post.caption) : "";
   const imageUrl = buildImageUrl(post.image_key);
+  const displayName = post.author_name ?? post.author_id;
+  const initials = displayName
+    .split(/\s+/u)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
   return (
     <article className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
       <header className="mb-3 flex items-center gap-2">
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-800 text-sm font-semibold text-zinc-200">
-          {post.author_id.slice(0, 2).toUpperCase()}
+          {initials || displayName.slice(0, 2).toUpperCase()}
         </div>
         <div className="text-sm">
-          <p className="font-semibold text-zinc-100">{post.author_id}</p>
-          <p className="text-xs text-zinc-400">Post #{post.id}</p>
+          <p className="font-semibold text-zinc-100">{displayName}</p>
         </div>
       </header>
 
