@@ -1,6 +1,10 @@
+import Image, { type ImageProps } from "next/image";
 import type { ComponentPropsWithoutRef } from "react";
 
-export function Avatar({ children, ...props }: ComponentPropsWithoutRef<"div">) {
+export function Avatar({
+  children,
+  ...props
+}: ComponentPropsWithoutRef<"div">) {
   return (
     <div aria-live="polite" {...props}>
       {children}
@@ -8,11 +12,14 @@ export function Avatar({ children, ...props }: ComponentPropsWithoutRef<"div">) 
   );
 }
 
-export function AvatarImage(props: ComponentPropsWithoutRef<"img">) {
-  return <img {...props} alt={props.alt ?? ""} />;
+export function AvatarImage({ alt, ...props }: ImageProps) {
+  return <Image alt={alt ?? ""} {...props} />;
 }
 
-export function AvatarFallback({ children, ...props }: ComponentPropsWithoutRef<"span">) {
+export function AvatarFallback({
+  children,
+  ...props
+}: ComponentPropsWithoutRef<"span">) {
   return (
     <span role="img" aria-label="avatar fallback" {...props}>
       {children}

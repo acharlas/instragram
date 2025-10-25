@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
 export default function GlobalError() {
   return (
-    <html>
+    <html lang="en">
       <body>Something went wrong.</body>
     </html>
   );

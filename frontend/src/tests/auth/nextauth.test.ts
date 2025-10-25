@@ -1,5 +1,5 @@
+import type * as nextAuth from "next-auth";
 import type { NextAuthOptions } from "next-auth";
-import * as nextAuth from "next-auth";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import * as authModule from "../../app/api/auth/[...nextauth]/route";
@@ -21,7 +21,8 @@ beforeAll(() => {
   process.env.NEXTAUTH_SECRET = "test-secret";
   authOptions = authModule.authOptions;
   credentialsProvider = authOptions.providers.find(
-    (provider): provider is CredentialsProvider => provider.id === "credentials",
+    (provider): provider is CredentialsProvider =>
+      provider.id === "credentials",
   ) as CredentialsProvider;
   if (!credentialsProvider) {
     throw new Error("Credentials provider not found");
@@ -35,12 +36,15 @@ afterEach(() => {
 
 describe("authorizeWithCredentials", () => {
   it("returns user details when backend login and profile succeed", async () => {
-    const login = vi
-      .fn()
-      .mockResolvedValue({ access_token: "access-token", refresh_token: "refresh-token" });
-    const profile = vi
-      .fn()
-      .mockResolvedValue({ id: "user-id", username: "string", avatar_key: "avatar-key" });
+    const login = vi.fn().mockResolvedValue({
+      access_token: "access-token",
+      refresh_token: "refresh-token",
+    });
+    const profile = vi.fn().mockResolvedValue({
+      id: "user-id",
+      username: "string",
+      avatar_key: "avatar-key",
+    });
 
     const result = await authModule.authorizeWithCredentials(
       { username: "string", password: "stringst" },
@@ -73,9 +77,10 @@ describe("authorizeWithCredentials", () => {
   });
 
   it("returns null when profile retrieval fails", async () => {
-    const login = vi
-      .fn()
-      .mockResolvedValue({ access_token: "access-token", refresh_token: "refresh-token" });
+    const login = vi.fn().mockResolvedValue({
+      access_token: "access-token",
+      refresh_token: "refresh-token",
+    });
     const profile = vi.fn().mockRejectedValue(new Error("Unexpected failure"));
 
     const result = await authModule.authorizeWithCredentials(
@@ -137,9 +142,9 @@ describe("HTTP helper functions", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(authModule.loginWithCredentials("string", "wrong")).rejects.toThrow(
-      "Invalid credentials",
-    );
+    await expect(
+      authModule.loginWithCredentials("string", "wrong"),
+    ).rejects.toThrow("Invalid credentials");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -152,9 +157,9 @@ describe("HTTP helper functions", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(authModule.loginWithCredentials("string", "stringst")).rejects.toThrow(
-      "Missing authentication tokens",
-    );
+    await expect(
+      authModule.loginWithCredentials("string", "stringst"),
+    ).rejects.toThrow("Missing authentication tokens");
   });
 
   it("fetchUserProfile returns data on success", async () => {
@@ -204,7 +209,9 @@ describe("getSessionServer", () => {
     const session = { user: { id: "user-id" } } as unknown;
     const getter = vi.fn().mockResolvedValue(session);
 
-    const result = await getSessionServer(getter as unknown as typeof nextAuth.getServerSession);
+    const result = await getSessionServer(
+      getter as unknown as typeof nextAuth.getServerSession,
+    );
 
     expect(getter).toHaveBeenCalledWith(authModule.authOptions);
     expect(result).toBe(session);

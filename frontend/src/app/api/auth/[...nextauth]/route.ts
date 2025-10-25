@@ -1,5 +1,5 @@
-import NextAuth from "next-auth";
 import type { NextAuthOptions } from "next-auth";
+import NextAuth from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 
 type TokenResponse = {
@@ -82,7 +82,8 @@ export async function authorizeWithCredentials(
     return null;
   }
 
-  const { login = loginWithCredentials, profile = fetchUserProfile } = deps ?? {};
+  const { login = loginWithCredentials, profile = fetchUserProfile } =
+    deps ?? {};
 
   try {
     const tokens = await login(credentials.username, credentials.password);

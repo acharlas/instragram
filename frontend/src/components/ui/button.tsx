@@ -1,6 +1,9 @@
 import type { ButtonHTMLAttributes, DetailedHTMLProps } from "react";
 
-export type ButtonProps = DetailedHTMLProps<ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement> & {
+export type ButtonProps = DetailedHTMLProps<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  HTMLButtonElement
+> & {
   variant?: "primary" | "secondary" | "ghost";
 };
 
@@ -11,13 +14,17 @@ export function Button({ variant = "primary", ...props }: ButtonProps) {
 
   switch (variant) {
     case "secondary":
-      classes.push("border-transparent bg-gray-100 text-gray-900 hover:bg-gray-200");
+      classes.push(
+        "border-transparent bg-gray-100 text-gray-900 hover:bg-gray-200",
+      );
       break;
     case "ghost":
       classes.push("border-transparent text-gray-700 hover:bg-gray-50");
       break;
     default:
-      classes.push("border-transparent bg-blue-600 text-white hover:bg-blue-700");
+      classes.push(
+        "border-transparent bg-blue-600 text-white hover:bg-blue-700",
+      );
       break;
   }
 

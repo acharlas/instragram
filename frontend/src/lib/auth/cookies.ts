@@ -38,11 +38,19 @@ function buildOptions(maxAgeSeconds: number): CookieOptions {
   };
 }
 
-export function setAccessTokenCookie(value: string, maxAgeSeconds: number, store?: CookieStore) {
+export function setAccessTokenCookie(
+  value: string,
+  maxAgeSeconds: number,
+  store?: CookieStore,
+) {
   resolveStore(store).set(ACCESS_COOKIE, value, buildOptions(maxAgeSeconds));
 }
 
-export function setRefreshTokenCookie(value: string, maxAgeSeconds: number, store?: CookieStore) {
+export function setRefreshTokenCookie(
+  value: string,
+  maxAgeSeconds: number,
+  store?: CookieStore,
+) {
   resolveStore(store).set(REFRESH_COOKIE, value, buildOptions(maxAgeSeconds));
 }
 
