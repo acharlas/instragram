@@ -36,12 +36,13 @@ class Settings(BaseSettings):
     app_env: str = Field(default="local", alias="APP_ENV")
     debug: bool = Field(default=False, alias="DEBUG")
 
-    secret_key: str = Field(alias="SECRET_KEY")
+    secret_key: str = Field(default="instragram-demo-secret", alias="SECRET_KEY")
 
     database_url: str = Field(
+        default="postgresql+asyncpg://app:app@postgres:5432/instagram",
         alias="DATABASE_URL",
     )
-    redis_url: str = Field(alias="REDIS_URL")
+    redis_url: str = Field(default="redis://redis:6379/0", alias="REDIS_URL")
     rate_limit_requests: int = Field(default=60, alias="RATE_LIMIT_REQUESTS")
     rate_limit_window_seconds: int = Field(
         default=60, alias="RATE_LIMIT_WINDOW_SECONDS"
@@ -60,8 +61,8 @@ class Settings(BaseSettings):
     )
 
     minio_endpoint: str = Field(default="minio:9000", alias="MINIO_ENDPOINT")
-    minio_access_key: str = Field(alias="MINIO_ACCESS_KEY")
-    minio_secret_key: str = Field(alias="MINIO_SECRET_KEY")
+    minio_access_key: str = Field(default="minio", alias="MINIO_ACCESS_KEY")
+    minio_secret_key: str = Field(default="minio123", alias="MINIO_SECRET_KEY")
     minio_bucket: str = Field(default="instagram-media", alias="MINIO_BUCKET")
     minio_secure: bool = Field(default=False, alias="MINIO_SECURE")
 
@@ -161,7 +162,7 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     """Memoized settings accessor to avoid repeated parsing."""
-    return Settings()
+    return Settings()  # type: ignore[call-arg]
 
 
 settings: Settings = get_settings()
