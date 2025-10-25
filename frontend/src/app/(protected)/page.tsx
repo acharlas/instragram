@@ -1,8 +1,4 @@
-
-
-export default  function ProtectedHomePage() {
-
-
+export default function ProtectedHomePage() {
   return (
     <div>
       <p>Hello world</p>
