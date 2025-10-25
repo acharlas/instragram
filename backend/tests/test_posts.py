@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
 from core.config import settings
-from models import Comment, Post
+from models import Comment, Like, Post
 from api.v1 import posts as posts_api
 from services import storage
 
@@ -223,6 +223,115 @@ async def test_get_post_comments_requires_access(
     )
     denied = await async_client.get(f"/api/v1/posts/{post.id}/comments")
     assert denied.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_comment_endpoint(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+):
+    viewer_payload = make_user_payload("viewer")
+    author_payload = make_user_payload("author")
+
+    viewer_response = await async_client.post("/api/v1/auth/register", json=viewer_payload)
+    author_response = await async_client.post("/api/v1/auth/register", json=author_payload)
+
+    viewer_id = viewer_response.json()["id"]
+    author_id = author_response.json()["id"]
+
+    await async_client.post(
+        "/api/v1/auth/login",
+        json={"username": viewer_payload["username"], "password": viewer_payload["password"]},
+    )
+    await async_client.post(f"/api/v1/users/{author_payload['username']}/follow")
+
+    post = Post(author_id=author_id, image_key="posts/comment-create.jpg", caption="New comment")
+    db_session.add(post)
+    await db_session.commit()
+    await db_session.refresh(post)
+
+    response = await async_client.post(
+        f"/api/v1/posts/{post.id}/comments",
+        json={"text": "  Merci!  "},
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["text"] == "Merci!"
+    assert data["author_id"] == viewer_id
+
+    # ensure comment persisted
+    stored = await db_session.execute(
+        select(Comment).where(_eq(Comment.post_id, post.id), _eq(Comment.author_id, viewer_id))
+    )
+    comment = stored.scalar_one_or_none()
+    assert comment is not None
+    assert comment.text == "Merci!"
+
+    # outsider cannot comment
+    outsider_payload = make_user_payload("outsider")
+    await async_client.post("/api/v1/auth/register", json=outsider_payload)
+    await async_client.post(
+        "/api/v1/auth/login",
+        json={"username": outsider_payload["username"], "password": outsider_payload["password"]},
+    )
+    forbidden = await async_client.post(
+        f"/api/v1/posts/{post.id}/comments",
+        json={"text": "Hello"},
+    )
+    assert forbidden.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_like_and_unlike_post(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+):
+    viewer_payload = make_user_payload("viewer")
+    author_payload = make_user_payload("author")
+
+    viewer_response = await async_client.post("/api/v1/auth/register", json=viewer_payload)
+    author_response = await async_client.post("/api/v1/auth/register", json=author_payload)
+
+    viewer_id = viewer_response.json()["id"]
+    author_id = author_response.json()["id"]
+
+    await async_client.post(
+        "/api/v1/auth/login",
+        json={"username": viewer_payload["username"], "password": viewer_payload["password"]},
+    )
+    await async_client.post(f"/api/v1/users/{author_payload['username']}/follow")
+
+    post = Post(author_id=author_id, image_key="posts/like.jpg", caption="Like me")
+    db_session.add(post)
+    await db_session.commit()
+    await db_session.refresh(post)
+
+    like_response = await async_client.post(f"/api/v1/posts/{post.id}/likes")
+    assert like_response.status_code == 200
+    exists = await db_session.execute(
+        select(Like).where(_eq(Like.user_id, viewer_id), _eq(Like.post_id, post.id))
+    )
+    assert exists.scalar_one_or_none() is not None
+
+    # liking again is idempotent
+    again = await async_client.post(f"/api/v1/posts/{post.id}/likes")
+    assert again.status_code == 200
+
+    unlike_response = await async_client.delete(f"/api/v1/posts/{post.id}/likes")
+    assert unlike_response.status_code == 200
+    exists_after = await db_session.execute(
+        select(Like).where(_eq(Like.user_id, viewer_id), _eq(Like.post_id, post.id))
+    )
+    assert exists_after.scalar_one_or_none() is None
+
+    outsider_payload = make_user_payload("outsider")
+    await async_client.post("/api/v1/auth/register", json=outsider_payload)
+    await async_client.post(
+        "/api/v1/auth/login",
+        json={"username": outsider_payload["username"], "password": outsider_payload["password"]},
+    )
+    forbidden_like = await async_client.post(f"/api/v1/posts/{post.id}/likes")
+    assert forbidden_like.status_code == 404
 
 
 @pytest.mark.asyncio
