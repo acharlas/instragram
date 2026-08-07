@@ -126,6 +126,81 @@ async def test_followers_and_following_lists(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_private_users_hidden_from_follower_lists(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+):
+    public_payload = make_user_payload("public_user")
+    private_payload = make_user_payload("private_user")
+    stranger_payload = make_user_payload("stranger")
+
+    public_user = (
+        await async_client.post("/api/v1/auth/register", json=public_payload)
+    ).json()
+    private_user = (
+        await async_client.post("/api/v1/auth/register", json=private_payload)
+    ).json()
+    stranger = (
+        await async_client.post("/api/v1/auth/register", json=stranger_payload)
+    ).json()
+
+    # Make the private user private, then have them follow the public user.
+    await async_client.post(
+        "/api/v1/auth/login",
+        json={
+            "username": private_payload["username"],
+            "password": private_payload["password"],
+        },
+    )
+    assert (
+        await async_client.patch("/api/v1/me", data={"is_private": "true"})
+    ).status_code == 200
+    assert (
+        await async_client.post(
+            f"/api/v1/users/{public_user['username']}/follow"
+        )
+    ).status_code == 200
+
+    # A stranger viewing the public user's followers must not see the private user.
+    await async_client.post(
+        "/api/v1/auth/login",
+        json={
+            "username": stranger_payload["username"],
+            "password": stranger_payload["password"],
+        },
+    )
+    followers_resp = await async_client.get(
+        f"/api/v1/users/{public_user['username']}/followers"
+    )
+    assert followers_resp.status_code == 200
+    follower_names = {f["username"] for f in followers_resp.json()}
+    assert private_user["username"] not in follower_names
+
+    # A follower of the private user can see them in the list.
+    db_session.add(
+        Follow(
+            follower_id=stranger["id"],
+            followee_id=private_user["id"],
+        )
+    )
+    await db_session.commit()
+
+    await async_client.post(
+        "/api/v1/auth/login",
+        json={
+            "username": stranger_payload["username"],
+            "password": stranger_payload["password"],
+        },
+    )
+    followers_resp = await async_client.get(
+        f"/api/v1/users/{public_user['username']}/followers"
+    )
+    assert followers_resp.status_code == 200
+    follower_names = {f["username"] for f in followers_resp.json()}
+    assert private_user["username"] in follower_names
+
+
+@pytest.mark.asyncio
 async def test_followers_and_following_require_auth(async_client: AsyncClient):
     alice = make_user_payload("alice")
     bob = make_user_payload("bob")

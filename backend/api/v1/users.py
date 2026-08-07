@@ -43,6 +43,7 @@ from services import (
     read_upload_file,
     upload_image_bytes,
 )
+from services.post_policy import build_author_view_filter
 
 router = APIRouter(tags=["users"])
 MAX_PROFILE_NAME_LENGTH = 80
@@ -726,9 +727,10 @@ async def list_followers(
         .join(Follow, _eq(Follow.follower_id, User.id))
         .where(
             _eq(Follow.followee_id, target_user_id),
-            build_not_blocked_either_direction_filter(
+            build_author_view_filter(
                 viewer_id=current_user_id,
-                candidate_user_id_column=cast(ColumnElement[str], User.id),
+                post_author_column=cast(ColumnElement[str], User.id),
+                author_is_private_column=cast(ColumnElement[bool], User.is_private),
             ),
         )
         .order_by(User.username, User.id)
@@ -783,9 +785,10 @@ async def list_following(
         .join(Follow, _eq(Follow.followee_id, User.id))
         .where(
             _eq(Follow.follower_id, target_user_id),
-            build_not_blocked_either_direction_filter(
+            build_author_view_filter(
                 viewer_id=current_user_id,
-                candidate_user_id_column=cast(ColumnElement[str], User.id),
+                post_author_column=cast(ColumnElement[str], User.id),
+                author_is_private_column=cast(ColumnElement[bool], User.is_private),
             ),
         )
         .order_by(User.username, User.id)
