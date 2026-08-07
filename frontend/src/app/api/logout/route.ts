@@ -42,17 +42,23 @@ export async function POST(request: Request) {
       if (error.status === 401) {
         return NextResponse.json({ success: true, revoked: false });
       }
-      return NextResponse.json({
-        success: true,
-        revoked: false,
-        detail: error.message ?? null,
-      });
+      return NextResponse.json(
+        {
+          success: false,
+          revoked: false,
+          detail: error.message ?? null,
+        },
+        { status: 502 },
+      );
     }
     console.error("Unexpected error during logout", error);
-    return NextResponse.json({
-      success: true,
-      revoked: false,
-      detail: "Unexpected error",
-    });
+    return NextResponse.json(
+      {
+        success: false,
+        revoked: false,
+        detail: "Unexpected error",
+      },
+      { status: 502 },
+    );
   }
 }
