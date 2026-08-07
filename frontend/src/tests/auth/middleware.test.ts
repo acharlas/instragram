@@ -167,7 +167,10 @@ describe("middleware session cookie sync", () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response("{}", {
         headers: [
-          ["set-cookie", "next-auth.session-token=rotated-jwt; Path=/; HttpOnly"],
+          [
+            "set-cookie",
+            "next-auth.session-token=rotated-jwt; Path=/; HttpOnly",
+          ],
         ],
       }),
     );
@@ -176,10 +179,7 @@ describe("middleware session cookie sync", () => {
     const response = await middleware(new NextRequest("http://localhost/"));
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [sessionUrl, init] = fetchMock.mock.calls[0] as [
-      string,
-      RequestInit,
-    ];
+    const [sessionUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(String(sessionUrl)).toBe("http://localhost/api/auth/session");
     expect(init.cache).toBe("no-store");
     expect(response?.headers.get("set-cookie")).toContain("rotated-jwt");
@@ -206,7 +206,10 @@ describe("middleware session cookie sync", () => {
       accessTokenExpires: Date.now() - 1_000,
       refreshToken: "refresh-token",
     });
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new Error("network down")),
+    );
 
     const response = await middleware(new NextRequest("http://localhost/"));
 
