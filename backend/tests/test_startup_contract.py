@@ -146,3 +146,18 @@ def test_start_script_skips_prune_command_when_opted_out() -> None:
 def test_dockerfile_uses_single_startup_script() -> None:
     dockerfile = (_backend_root() / "Dockerfile").read_text(encoding="utf-8")
     assert 'CMD ["./scripts/start.sh"]' in dockerfile
+
+
+def test_docs_disabled_outside_local_and_test() -> None:
+    from core.config import settings
+    from app.main import create_app
+
+    original_env = settings.app_env
+    try:
+        settings.app_env = "production"
+        app = create_app()
+        assert app.docs_url is None
+        assert app.redoc_url is None
+        assert app.openapi_url is None
+    finally:
+        settings.app_env = original_env
