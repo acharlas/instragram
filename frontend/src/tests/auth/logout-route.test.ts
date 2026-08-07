@@ -72,7 +72,7 @@ describe("POST /api/logout", () => {
     expect(payload.revoked).toBe(false);
   });
 
-  it("keeps local logout successful when backend revoke fails", async () => {
+  it("reports failure when backend revocation fails", async () => {
     getTokenMock.mockResolvedValueOnce({
       accessToken: "access-token",
       refreshToken: "refresh-token",
@@ -88,9 +88,23 @@ describe("POST /api/logout", () => {
       detail?: string | null;
     };
 
-    expect(response.status).toBe(200);
-    expect(payload.success).toBe(true);
+    expect(response.status).toBe(502);
+    expect(payload.success).toBe(false);
     expect(payload.revoked).toBe(false);
     expect(payload.detail).toBe("Service unavailable");
+  });
+
+  it("reports failure on unexpected errors", async () => {
+    getTokenMock.mockResolvedValueOnce({
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+    });
+    apiServerFetchMock.mockRejectedValueOnce(new TypeError("network down"));
+
+    const response = await POST(new Request("http://localhost/api/logout"));
+    const payload = (await response.json()) as { success?: boolean };
+
+    expect(response.status).toBe(502);
+    expect(payload.success).toBe(false);
   });
 });

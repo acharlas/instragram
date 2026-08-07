@@ -10,13 +10,14 @@ from services import RateLimitMiddleware, get_rate_limiter
 
 def create_app() -> FastAPI:
     """Instantiate and configure the FastAPI application."""
+    show_docs = settings.app_env.strip().lower() in {"local", "test"}
     app = FastAPI(
         title=settings.app_name,
         version="0.1.0",
         debug=settings.debug,
-        docs_url="/docs",
-        redoc_url="/redoc",
-        openapi_url="/openapi.json",
+        docs_url="/docs" if show_docs else None,
+        redoc_url="/redoc" if show_docs else None,
+        openapi_url="/openapi.json" if show_docs else None,
     )
 
     app.add_middleware(

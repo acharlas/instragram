@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const getTokenMock = vi.hoisted(() => vi.fn());
 
@@ -150,5 +150,69 @@ describe("middleware token expiry checks", () => {
     expect(config.matcher).toContain(
       "/((?!api(?:/|$)|_next/|favicon.ico|site.webmanifest).*)",
     );
+  });
+});
+
+describe("middleware session cookie sync", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("forwards refreshed session cookies from the session route when token is recoverable", async () => {
+    getTokenMock.mockResolvedValueOnce({
+      accessToken: "expired-token",
+      accessTokenExpires: Date.now() - 1_000,
+      refreshToken: "refresh-token",
+    });
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("{}", {
+        headers: [
+          [
+            "set-cookie",
+            "next-auth.session-token=rotated-jwt; Path=/; HttpOnly",
+          ],
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await middleware(new NextRequest("http://localhost/"));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [sessionUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(String(sessionUrl)).toBe("http://localhost/api/auth/session");
+    expect(init.cache).toBe("no-store");
+    expect(response?.headers.get("set-cookie")).toContain("rotated-jwt");
+    expect(response?.status).toBe(200);
+  });
+
+  it("does not touch the session route when the access token is usable", async () => {
+    getTokenMock.mockResolvedValueOnce({
+      accessToken: "valid-token",
+      accessTokenExpires: Date.now() + 60_000,
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await middleware(new NextRequest("http://localhost/"));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(response?.status).toBe(200);
+  });
+
+  it("keeps serving the page when the session sync fails", async () => {
+    getTokenMock.mockResolvedValueOnce({
+      accessToken: "expired-token",
+      accessTokenExpires: Date.now() - 1_000,
+      refreshToken: "refresh-token",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new Error("network down")),
+    );
+
+    const response = await middleware(new NextRequest("http://localhost/"));
+
+    expect(response?.status).toBe(200);
   });
 });

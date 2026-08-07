@@ -23,10 +23,15 @@ def build_author_view_filter(
 ) -> ColumnElement[bool]:
     """Return a SQL predicate for authors whose posts are visible to viewer."""
     follow_exists = exists(
-        select(1).where(
+        select(1)
+        .where(
             _eq(Follow.follower_id, viewer_id),
             _eq(Follow.followee_id, post_author_column),
         )
+        # ponytail: keep Follow in the subquery even when the outer query
+        # already joins Follow (follower lists) — auto-correlation would
+        # strip the subquery's FROM entirely.
+        .correlate()
     )
     return cast(
         ColumnElement[bool],
