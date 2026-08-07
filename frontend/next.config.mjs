@@ -1,5 +1,3 @@
-import type { NextConfig } from "next";
-
 export const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
@@ -8,7 +6,8 @@ export const securityHeaders = [
   { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
 ];
 
-const nextConfig: NextConfig = {
+/** @type {import("next").NextConfig} */
+const nextConfig = {
   // Protected media is served through authenticated API routes.
   images: {
     unoptimized: true,

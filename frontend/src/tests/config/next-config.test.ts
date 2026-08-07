@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { securityHeaders } from "../../../next.config";
+import { securityHeaders } from "../../../next.config.mjs";
 
 describe("next config security headers", () => {
   it("sets nosniff", () => {
