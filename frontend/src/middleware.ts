@@ -59,6 +59,23 @@ function buildLoginRedirect(request: NextRequest) {
   return redirectUrl;
 }
 
+async function syncSessionCookie(request: NextRequest, response: NextResponse) {
+  try {
+    const sessionResponse = await fetch(
+      new URL("/api/auth/session", request.url),
+      {
+        headers: { cookie: request.headers.get("cookie") ?? "" },
+        cache: "no-store",
+      },
+    );
+    for (const cookie of sessionResponse.headers.getSetCookie()) {
+      response.headers.append("set-cookie", cookie);
+    }
+  } catch {
+    // ponytail: transient failure — next navigation retries; never block the page.
+  }
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const normalizedPath = normalizePathname(pathname);
@@ -76,11 +93,19 @@ export async function middleware(request: NextRequest) {
   }
 
   const token = await readSessionToken(request);
-  if (getSessionState(token) === "invalid") {
+  const sessionState = getSessionState(token);
+  if (sessionState === "invalid") {
     return NextResponse.redirect(buildLoginRedirect(request));
   }
 
-  return NextResponse.next();
+  const response = NextResponse.next();
+  if (sessionState === "recoverable") {
+    // Rotation must run through next-auth's HTTP route: the RSC path
+    // (getServerSession) discards Set-Cookie, so in-memory rotation leaves
+    // the browser holding a revoked refresh token and the session dies.
+    await syncSessionCookie(request, response);
+  }
+  return response;
 }
 
 export const config = {
